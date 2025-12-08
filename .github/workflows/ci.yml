@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -30,13 +32,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential ninja-build pkg-config \
             mecab libmecab-dev mecab-ipadic-utf8 \
-            cabocha libcabocha-dev libcurl4-openssl-dev
+            cabocha libcabocha-dev libcurl4-openssl-dev \
+            libtree-sitter-dev
 
       - name: Install deps (macOS)
         if: ${{ matrix.os == 'macos-latest' }}
         run: |
           brew update
-          brew install ninja pkg-config mecab mecab-ipadic cabocha curl
+          brew install ninja pkg-config mecab mecab-ipadic cabocha curl tree-sitter
 
       - name: Install deps (Windows - MSYS2)
         if: ${{ matrix.os == 'windows-latest' }}
