@@ -1,0 +1,27 @@
+[submodule "mozuku-lsp/third-party/json"]
+	path = mozuku-lsp/third-party/json
+	url = https://github.com/nlohmann/json.git
+[submodule "mozuku-lsp/third-party/tree-sitter-rust"]
+	path = mozuku-lsp/third-party/tree-sitter-rust
+	url = https://github.com/tree-sitter/tree-sitter-rust.git
+[submodule "mozuku-lsp/third-party/tree-sitter-c"]
+	path = mozuku-lsp/third-party/tree-sitter-c
+	url = https://github.com/tree-sitter/tree-sitter-c.git
+[submodule "mozuku-lsp/third-party/tree-sitter-cpp"]
+	path = mozuku-lsp/third-party/tree-sitter-cpp
+	url = https://github.com/tree-sitter/tree-sitter-cpp.git
+[submodule "mozuku-lsp/third-party/tree-sitter-javascript"]
+	path = mozuku-lsp/third-party/tree-sitter-javascript
+	url = https://github.com/tree-sitter/tree-sitter-javascript.git
+[submodule "mozuku-lsp/third-party/tree-sitter-python"]
+	path = mozuku-lsp/third-party/tree-sitter-python
+	url = https://github.com/tree-sitter/tree-sitter-python.git
+[submodule "mozuku-lsp/third-party/tree-sitter-typescript"]
+	path = mozuku-lsp/third-party/tree-sitter-typescript
+	url = https://github.com/tree-sitter/tree-sitter-typescript.git
+[submodule "mozuku-lsp/third-party/tree-sitter-html"]
+	path = mozuku-lsp/third-party/tree-sitter-html
+	url = https://github.com/tree-sitter/tree-sitter-html.git
+[submodule "mozuku-lsp/third-party/tree-sitter-latex"]
+	path = mozuku-lsp/third-party/tree-sitter-latex
+	url = https://github.com/latex-lsp/tree-sitter-latex.git
