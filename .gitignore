@@ -1,0 +1,15 @@
+node_modules/
+build/
+vscode-mozuku/data/
+vscode-mozuku/bin/
+vscode-mozuku/metadata.json
+dist/
+.cache/
+*.o
+*.so
+*.dylib
+*.exe
+*.dll
+*.lo
+*.la
+*.log

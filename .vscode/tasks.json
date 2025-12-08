@@ -1,0 +1,44 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "type": "npm",
+      "script": "compile",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$tsc"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/vscode-mozuku"
+      }
+    },
+    {
+      "label": "package",
+      "type": "npm",
+      "script": "package",
+      "group": "build",
+      "problemMatcher": [
+        "$tsc"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/vscode-mozuku"
+      }
+    },
+    {
+      "label": "test",
+      "type": "npm",
+      "script": "test",
+      "group": "test",
+      "problemMatcher": [
+        "$tsc"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/vscode-mozuku"
+      }
+    }
+  ]
+}

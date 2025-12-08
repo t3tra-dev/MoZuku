@@ -1,0 +1,224 @@
+{
+  "name": "mozuku",
+  "displayName": "MoZuku",
+  "description": "Japanese LSP: diagnostics + semantic tokens. Requires system MeCab/CaboCha libraries.",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.103.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "japanese",
+        "aliases": [
+          "Japanese"
+        ],
+        "extensions": [
+          ".ja.txt",
+          ".ja.md"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "configurationDefaults": {
+      "editor.semanticHighlighting.enabled": true,
+      "editor.semanticTokenColorCustomizations": {
+        "rules": {
+          "noun": "#c8c8c8",
+          "noun.numeric": "#b5cea8",
+          "unknown.numeric": "#b5cea8",
+          "verb": "#569cd6",
+          "adjective": "#4fc1ff",
+          "adverb": "#9cdcfe",
+          "particle": "#d16969",
+          "aux": "#87CEEB",
+          "conjunction": "#d7ba7d",
+          "symbol": "#808080",
+          "interj": "#b5cea8",
+          "prefix": "#c8c8c8",
+          "suffix": "#c8c8c8",
+          "unknown": "#aaaaaa"
+        }
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "title": "MoZuku Configuration",
+      "properties": {
+        "mozuku.serverPath": {
+          "type": "string",
+          "default": "./bin/mozuku-lsp",
+          "description": "Path to the MoZuku LSP server binary (relative to extension root)"
+        },
+        "mozuku.mecab.dicdir": {
+          "type": "string",
+          "default": "",
+          "description": "Path to MeCab dictionary directory (empty = auto-detect)"
+        },
+        "mozuku.mecab.charset": {
+          "type": "string",
+          "default": "UTF-8",
+          "enum": ["UTF-8", "EUC-JP", "Shift_JIS"],
+          "description": "MeCab character encoding"
+        },
+        "mozuku.analysis.enableCaboCha": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable CaboCha dependency parsing for advanced features"
+        },
+        "mozuku.analysis.grammarCheck": {
+          "type": "boolean", 
+          "default": true,
+          "description": "Enable grammar diagnostics"
+        },
+        "mozuku.analysis.minJapaneseRatio": {
+          "type": "number",
+          "default": 0.1,
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Minimum ratio of Japanese characters for file analysis"
+        },
+        "mozuku.analysis.warningMinSeverity": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 4,
+          "enum": [1, 2, 3, 4],
+          "enumDescriptions": ["Error only", "Warning and above", "Information and above", "All including hints"],
+          "description": "Minimum severity level for warnings (1=Error, 2=Warning, 3=Information, 4=Hint)"
+        },
+        "mozuku.analysis.warnings.particleDuplicate": {
+          "type": "boolean",
+          "default": true,
+          "description": "Detect duplicate particles (二重助詞) like をを, がが"
+        },
+        "mozuku.analysis.warnings.particleSequence": {
+          "type": "boolean", 
+          "default": true,
+          "description": "Detect invalid particle sequences like がは, をは"
+        },
+        "mozuku.analysis.warnings.particleMismatch": {
+          "type": "boolean",
+          "default": true,
+          "description": "Detect particle-verb mismatches (experimental)"
+        },
+        "mozuku.analysis.warnings.sentenceStructure": {
+          "type": "boolean",
+          "default": false,
+          "description": "Detect sentence structure issues (experimental)"
+        },
+        "mozuku.analysis.warnings.styleConsistency": {
+          "type": "boolean",
+          "default": false,
+          "description": "Detect style inconsistency (experimental)"
+        },
+        "mozuku.analysis.warnings.redundancy": {
+          "type": "boolean",
+          "default": false,
+          "description": "Detect redundant expressions (experimental)"
+        },
+        "mozuku.analysis.rules.commaLimit": {
+          "type": "boolean",
+          "default": true,
+          "description": "一文で使用できる読点「、」を3つまでに制限する"
+        },
+        "mozuku.analysis.rules.adversativeGa": {
+          "type": "boolean",
+          "default": true,
+          "description": "逆接の接続助詞「が」が同一文で複数回出現する場合に警告する"
+        },
+        "mozuku.analysis.rules.duplicateParticleSurface": {
+          "type": "boolean",
+          "default": true,
+          "description": "同じ助詞 (同一の種類) が文中で連続する場合に警告する"
+        },
+        "mozuku.analysis.rules.adjacentParticles": {
+          "type": "boolean",
+          "default": true,
+          "description": "助詞が隣接して連続する場合に警告する (同種のみ) "
+        },
+        "mozuku.analysis.rules.conjunctionRepeat": {
+          "type": "boolean",
+          "default": true,
+          "description": "同じ接続詞が連続する場合に警告する (改行でリセット) "
+        },
+        "mozuku.analysis.rules.raDropping": {
+          "type": "boolean",
+          "default": true,
+          "description": "ら抜き言葉を検出する"
+        },
+        "mozuku.analysis.rules.commaLimitMax": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "description": "一文で許容する読点「、」の最大数"
+        },
+        "mozuku.analysis.rules.adversativeGaMax": {
+          "type": "number",
+          "default": 1,
+          "minimum": 1,
+          "description": "一文内で許容する逆接「が」の最大回数"
+        },
+        "mozuku.analysis.rules.duplicateParticleSurfaceMaxRepeat": {
+          "type": "number",
+          "default": 1,
+          "minimum": 1,
+          "description": "同じ助詞表層が連続で許容される最大回数"
+        },
+        "mozuku.analysis.rules.adjacentParticlesMaxRepeat": {
+          "type": "number",
+          "default": 1,
+          "minimum": 1,
+          "description": "同種の助詞が隣接して許容される最大回数"
+        },
+        "mozuku.analysis.rules.conjunctionRepeatMax": {
+          "type": "number",
+          "default": 1,
+          "minimum": 1,
+          "description": "同じ接続詞が連続で許容される最大回数"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "mozuku.helloWorld",
+        "title": "Hello World"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && npm run build-lsp && node esbuild.js",
+    "package": "npm run check-types && npm run lint && npm run build-lsp && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test",
+    "build-lsp": "node build-lsp.js",
+    "clean": "rimraf dist server"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@types/vscode": "^1.103.0",
+    "@typescript-eslint/eslint-plugin": "^8.39.0",
+    "@typescript-eslint/parser": "^8.39.0",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
+    "esbuild": "^0.25.8",
+    "eslint": "^9.32.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.9.2"
+  }
+}

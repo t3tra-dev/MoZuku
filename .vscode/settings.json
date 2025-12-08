@@ -1,0 +1,13 @@
+{
+  "files.exclude": {
+    "vscode-mozuku/out": false,
+    "vscode-mozuku/dist": false
+  },
+  "search.exclude": {
+    "mozuku-lsp/third-party": true,
+    "vscode-mozuku/out": true,
+    "vscode-mozuku/dist": true
+  },
+  "typescript.tsc.autoDetect": "off",
+  "cmake.sourceDirectory": "${workspaceFolder}/mozuku-lsp"
+}

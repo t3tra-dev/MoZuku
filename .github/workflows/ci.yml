@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install deps (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ninja-build pkg-config \
+            mecab libmecab-dev mecab-ipadic-utf8 \
+            cabocha libcabocha-dev libcurl4-openssl-dev
+
+      - name: Install deps (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew update
+          brew install ninja pkg-config mecab mecab-ipadic cabocha curl
+
+      - name: Install deps (Windows - MSYS2)
+        if: matrix.os == 'windows-latest'
+        shell: msys2 {0}
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja mingw-w64-x86_64-pkg-config
+          pacman -S --noconfirm mingw-w64-x86_64-mecab mingw-w64-x86_64-mecab-ipadic mingw-w64-x86_64-cabocha
+          pacman -S --noconfirm mingw-w64-x86_64-curl mingw-w64-x86_64-tree-sitter
+
+      - name: Configure (CMake)
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        shell: ${{ matrix.os == 'windows-latest' && 'msys2 {0}' || 'bash' }}
+
+      - name: Build LSP (CMake)
+        run: cmake --build build --config Release
+        shell: ${{ matrix.os == 'windows-latest' && 'msys2 {0}' || 'bash' }}
+
+      - name: Install npm deps (VS Code extension)
+        run: npm ci
+        working-directory: vscode-mozuku
+
+      - name: Build VS Code extension (bundle only)
+        run: npm run package -- --production
+        working-directory: vscode-mozuku
+
+      - name: Archive artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mozuku-${{ matrix.os }}
+          path: |
+            build/mozuku-lsp*
+            vscode-mozuku/dist/**
+            vscode-mozuku/bin/**
+            vscode-mozuku/metadata.json

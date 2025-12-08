@@ -1,0 +1,15 @@
+{
+  "comments": {},
+  "brackets": [
+    [
+      "「",
+      "」"
+    ],
+  ],
+  "autoClosingPairs": [
+    {
+      "open": "「",
+      "close": "」"
+    },
+  ]
+}

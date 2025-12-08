@@ -1,0 +1,28 @@
+{
+  "configurations": [
+    {
+      "name": "Mac",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "${workspaceFolder}/mozuku-lsp/include",
+        "${workspaceFolder}/mozuku-lsp/third-party/json/include",
+        "${workspaceFolder}/mozuku-lsp/third-party/json/single_include",
+        "${workspaceFolder}/mozuku-lsp/third-party/mecab/mecab/src",
+        "${workspaceFolder}/mozuku-lsp/third-party/crfpp",
+        "${workspaceFolder}/mozuku-lsp/third-party/cabocha/src",
+        "/usr/local/include",
+        "/opt/homebrew/include"
+      ],
+      "defines": [],
+      "macFrameworkPath": [
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks"
+      ],
+      "compilerPath": "/usr/bin/clang++",
+      "cStandard": "c17",
+      "cppStandard": "c++17",
+      "intelliSenseMode": "macos-clang-arm64",
+      "compileCommands": "${workspaceFolder}/mozuku-lsp/build/compile_commands.json"
+    }
+  ],
+  "version": 4
+}
