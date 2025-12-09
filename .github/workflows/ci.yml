@@ -59,10 +59,13 @@ jobs:
           git clone https://github.com/taku910/mecab.git
           cd mecab/mecab
           export LIBTOOL_DIR="$(brew --prefix libtool)/bin"
-          export PATH="${LIBTOOL_DIR}:$PATH"
+          mkdir -p /tmp/libtool-bin
+          ln -sf "${LIBTOOL_DIR}/glibtoolize" /tmp/libtool-bin/libtoolize
+          ln -sf "${LIBTOOL_DIR}/glibtool" /tmp/libtool-bin/libtool
+          export PATH="/tmp/libtool-bin:${LIBTOOL_DIR}:$PATH"
           export LIBTOOLIZE="${LIBTOOL_DIR}/glibtoolize"
           export LIBTOOL="${LIBTOOL_DIR}/glibtool"
-          ./autogen.sh
+          autoreconf -fi
           ./configure --prefix=/usr/local --with-charset=UTF8
           make -j2
           make check || true
@@ -230,6 +233,8 @@ jobs:
         run: |
           git clone https://github.com/taku910/cabocha.git
           cd cabocha
+          sed -i '1i #include <unordered_map>' src/common.h
+          sed -i 's/std::hash_map/std::unordered_map/g' src/common.h
           autoreconf -i
           ./configure --with-charset=UTF8 --with-mecab-config=/mingw64/bin/mecab-config --with-crfpp-config=/mingw64/bin/crf-config --prefix=/mingw64 CXXFLAGS="-std=c++11"
           make -j2
