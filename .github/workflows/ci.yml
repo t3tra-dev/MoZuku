@@ -250,8 +250,7 @@ jobs:
         run: |
           git clone https://github.com/taku910/cabocha.git
           cd cabocha
-          cp ../patches/cabocha_win_fix.patch /tmp/cabocha_win_fix.patch
-          tr -d '\r' < /tmp/cabocha_win_fix.patch > /tmp/cabocha_win_fix_unix.patch
+          tr -d '\r' < ../patches/cabocha_win_fix.patch | sed '1s/^\xEF\xBB\xBF//' > /tmp/cabocha_win_fix_unix.patch
           patch -p1 -i /tmp/cabocha_win_fix_unix.patch
           autoreconf -i
           ./configure --with-charset=UTF8 --with-mecab-config=/mingw64/bin/mecab-config --with-crfpp-config=/mingw64/bin/crf-config --prefix=/mingw64 CXXFLAGS="-std=c++11"
