@@ -410,9 +410,9 @@ jobs:
         if: ${{ matrix.os == 'windows' }}
         shell: pwsh
         run: |
-          $mecabSrc = Resolve-Path "..\mecab\mecab\src"
-          $cabochaSrc = Resolve-Path "..\cabocha\src"
-          $crfppSrc = Resolve-Path "..\crfpp"
+          $mecabSrc = Resolve-Path "mecab\mecab\src"
+          $cabochaSrc = Resolve-Path "cabocha\src"
+          $crfppSrc = Resolve-Path "crfpp"
 
           cd mozuku-lsp
           cmake -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -DBUILD_WITH_CABOCHA=ON `
