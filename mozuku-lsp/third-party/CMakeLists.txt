@@ -67,8 +67,9 @@ if(MECAB_CONFIG)
 else()
     message(STATUS "mecab-configが見つかりません - 標準システムパスを試行中")
     find_path(MECAB_INCLUDE_DIRS mecab.h
-        PATHS
+        HINTS
             ${MECAB_INCLUDE_HINT}
+        PATHS
             /opt/homebrew/include
             /opt/homebrew/Cellar/mecab/*/include
             /usr/local/include
@@ -78,8 +79,9 @@ else()
     )
     find_library(MECAB_LIBRARIES mecab
         NAMES mecab libmecab
-        PATHS
+        HINTS
             ${MECAB_LIBRARY_HINT}
+        PATHS
             /opt/homebrew/lib
             /opt/homebrew/Cellar/mecab/*/lib
             /usr/local/lib
@@ -146,8 +148,9 @@ if(NOT CABOCHA_FOUND)
     message(STATUS "  CABOCHA_INCLUDE_HINT: ${CABOCHA_INCLUDE_HINT}")
     message(STATUS "  CABOCHA_LIBRARY_HINT: ${CABOCHA_LIBRARY_HINT}")
     find_path(CABOCHA_INCLUDE_DIRS cabocha.h
-        PATHS
+        HINTS
             ${CABOCHA_INCLUDE_HINT}
+        PATHS
             /opt/homebrew/include
             /opt/homebrew/Cellar/cabocha/*/include
             /usr/local/include
@@ -157,8 +160,9 @@ if(NOT CABOCHA_FOUND)
     )
     find_library(CABOCHA_LIBRARIES
         NAMES cabocha libcabocha
-        PATHS
+        HINTS
             ${CABOCHA_LIBRARY_HINT}
+        PATHS
             /opt/homebrew/lib
             /opt/homebrew/Cellar/cabocha/*/lib
             /usr/local/lib
@@ -184,8 +188,9 @@ if(NOT CABOCHA_FOUND)
 endif()
 
 find_path(CRFPP_INCLUDE_DIRS crfpp.h
-    PATHS
+    HINTS
         ${CRFPP_INCLUDE_HINT}
+    PATHS
         /opt/homebrew/include
         /opt/homebrew/Cellar/crf++/*/include
         /usr/local/include
@@ -197,8 +202,9 @@ find_path(CRFPP_INCLUDE_DIRS crfpp.h
 
 find_library(CRFPP_LIBRARIES crfpp
     NAMES crfpp libcrfpp
-    PATHS
+    HINTS
         ${CRFPP_LIBRARY_HINT}
+    PATHS
         /opt/homebrew/lib
         /opt/homebrew/Cellar/crf++/*/lib
         /usr/local/lib
