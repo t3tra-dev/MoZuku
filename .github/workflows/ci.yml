@@ -352,12 +352,12 @@ jobs:
 
           # Overwrite DEFS as a single line (nmake is strict about backslashes)
           # Build DEFS as a single literal line (nmake friendly)
-          $defs = "DEFS = -D_CRT_SECURE_NO_DEPRECATE -DDLL_EXPORT -DHAVE_GETENV -DUNICODE -D_UNICODE -DHAVE_WINDOWS_H -DHAVE_STRING_H -DHAVE_MEMSET " +
-                  "-DMODEL_VERSION=$modelVersion " +
-                  "-DVERSION=\"\"$version\"\" " +
-                  "-DPACKAGE=\"\"cabocha\"\" " +
-                  "-DCABOCHA_DEFAULT_RC=\"\"c:\\cabocha\\etc\\cabocharc\"\" " +
-                  "-DCABOCHA_DEFAULT_CHARSET=\"\"UTF-8\"\""
+          $defs = "DEFS = -D_CRT_SECURE_NO_DEPRECATE -DDLL_EXPORT -DHAVE_GETENV -DUNICODE -D_UNICODE -DHAVE_WINDOWS_H -DHAVE_STRING_H -DHAVE_MEMSET "
+          $defs += "-DMODEL_VERSION=$modelVersion "
+          $defs += "-DVERSION=\"" + $version + "\" "
+          $defs += "-DPACKAGE=\"cabocha\" "
+          $defs += "-DCABOCHA_DEFAULT_RC=\"c:\\cabocha\\etc\\cabocharc\" "
+          $defs += "-DCABOCHA_DEFAULT_CHARSET=\"UTF-8\""
           $content = [regex]::Replace($content, '(?m)^DEFS\s*=.*$', $defs)
 
           # Write without BOM (nmake is sensitive to BOM in some contexts)
