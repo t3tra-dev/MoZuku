@@ -272,8 +272,8 @@ jobs:
           git clone https://github.com/taku910/cabocha.git
           cd cabocha
           perl -0777 -i -pe "s/using std::hash_map;/using std::unordered_map;/g" src/common.h
-          perl -0777 -i -pe "s/#include <string>/#include <string>\n#include <unordered_map>\n#ifdef _WIN32\n#include <windows.h>\ninline std::wstring Utf8ToWideWin(const char *input) { if (!input) return std::wstring(); int len = MultiByteToWideChar(CP_UTF8,0,input,-1,NULL,0); if (len <= 0) return std::wstring(); std::wstring w(len, L'\\0'); MultiByteToWideChar(CP_UTF8,0,input,-1,&w[0],len); if (!w.empty() && w.back()==L'\\0') w.pop_back(); return w; }\n#endif/" src/common.h
-          perl -0777 -i -pe "s/#define WPATH\\(path\\) \\(CaboCha::Utf8ToWide\\(path\\)\\.c_str\\(\\)\\)/#define WPATH(path) (CaboCha::Utf8ToWideWin(path).c_str())/g" src/common.h
+          perl -0777 -i -pe "s/#include <string>/#include <string>\n#include <unordered_map>\n#ifdef _WIN32\n#include <windows.h>\n#endif/" src/common.h
+          perl -0777 -i -pe "s/#define WPATH\\(path\\) \\(CaboCha::Utf8ToWide\\(path\\)\\.c_str\\(\\)\\)/#ifdef _WIN32\ninline std::wstring Utf8ToWideWin(const char *input) { if (!input) return std::wstring(); int len = MultiByteToWideChar(CP_UTF8,0,input,-1,NULL,0); if (len <= 0) return std::wstring(); std::wstring w(len, L\"\\\\0\"); MultiByteToWideChar(CP_UTF8,0,input,-1,&w[0],len); if (!w.empty() && w.back()==L\"\\\\0\") w.pop_back(); return w; }\n#undef WPATH\n#define WPATH(path) (::Utf8ToWideWin(path).c_str())\n#endif/sg" src/common.h
           autoreconf -i
           ./configure --with-charset=UTF8 --with-mecab-config=/mingw64/bin/mecab-config --with-crfpp-config=/mingw64/bin/crf-config --prefix=/mingw64 CXXFLAGS="-std=c++11 -w"
           make -j2
