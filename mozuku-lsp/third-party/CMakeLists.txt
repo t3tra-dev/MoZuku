@@ -15,6 +15,7 @@ if(tree-sitter_FOUND)
         set(TREESITTER_LIBRARIES tree-sitter::tree-sitter)
     endif()
     set(TREESITTER_FOUND TRUE)
+    message(STATUS "tree-sitter を CONFIG モードで発見")
 else()
     # Windows では PkgConfig が利用できない場合がある
     find_package(PkgConfig QUIET)
@@ -22,14 +23,33 @@ else()
         pkg_check_modules(TREESITTER REQUIRED tree-sitter)
     elseif(WIN32)
         # Windows: vcpkg のインストール先を直接検索
-        find_path(TREESITTER_INCLUDE_DIRS tree_sitter/api.h)
-        find_library(TREESITTER_LIB tree-sitter)
+        message(STATUS "Windows: tree-sitter を直接検索中...")
+        message(STATUS "  CMAKE_PREFIX_PATH: ${CMAKE_PREFIX_PATH}")
+        message(STATUS "  VCPKG_INSTALLED_DIR: ${VCPKG_INSTALLED_DIR}")
+
+        # vcpkg installed ディレクトリを含めて検索
+        find_path(TREESITTER_INCLUDE_DIRS tree_sitter/api.h
+            PATHS
+                ${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include
+                ${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include
+            PATH_SUFFIXES include
+        )
+        find_library(TREESITTER_LIB
+            NAMES tree-sitter tree_sitter
+            PATHS
+                ${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib
+                ${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib
+            PATH_SUFFIXES lib
+        )
+        message(STATUS "  検索結果 - INCLUDE: ${TREESITTER_INCLUDE_DIRS}")
+        message(STATUS "  検索結果 - LIB: ${TREESITTER_LIB}")
+
         if(TREESITTER_INCLUDE_DIRS AND TREESITTER_LIB)
             set(TREESITTER_LIBRARIES ${TREESITTER_LIB})
             set(TREESITTER_FOUND TRUE)
             message(STATUS "tree-sitter を直接検索で発見: ${TREESITTER_LIB}")
         else()
-            message(FATAL_ERROR "tree-sitter が見つかりません")
+            message(FATAL_ERROR "tree-sitter が見つかりません - vcpkg install tree-sitter を実行してください")
         endif()
     else()
         message(FATAL_ERROR "PkgConfig が見つかりません - pkg-config をインストールしてください")

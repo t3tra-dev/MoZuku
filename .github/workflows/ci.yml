@@ -410,8 +410,14 @@ jobs:
         if: ${{ matrix.os == 'windows' }}
         shell: pwsh
         run: |
+          # Debug: show vcpkg installed packages
+          Write-Host "=== vcpkg installed packages ==="
+          .\vcpkg\vcpkg.exe list
+          Write-Host "=== tree-sitter files ==="
+          Get-ChildItem -Path ".\vcpkg\installed\x86-windows" -Recurse -Filter "*tree*" | Select-Object FullName
+
           cd mozuku-lsp
-          cmake -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -DBUILD_WITH_CABOCHA=ON "-DCMAKE_TOOLCHAIN_FILE=$env:CMAKE_TOOLCHAIN_FILE"
+          cmake -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -DBUILD_WITH_CABOCHA=ON "-DCMAKE_TOOLCHAIN_FILE=$env:CMAKE_TOOLCHAIN_FILE" "-DVCPKG_TARGET_TRIPLET=x86-windows"
 
       - name: Build LSP (CMake, non-Windows)
         if: ${{ matrix.os != 'windows' }}
