@@ -149,6 +149,8 @@ if(BUILD_WITH_CABOCHA)
 
     if(NOT CABOCHA_FOUND)
         message(STATUS "cabocha-configが見つかりません - 標準システムパスを試行中")
+        message(STATUS "  CABOCHA_INCLUDE_HINT: ${CABOCHA_INCLUDE_HINT}")
+        message(STATUS "  CABOCHA_LIBRARY_HINT: ${CABOCHA_LIBRARY_HINT}")
         find_path(CABOCHA_INCLUDE_DIRS cabocha.h
             PATHS
                 ${CABOCHA_INCLUDE_HINT}
@@ -159,7 +161,7 @@ if(BUILD_WITH_CABOCHA)
                 "C:/Program Files/CaboCha/sdk"
                 "C:/cabocha/sdk"
         )
-        find_library(CABOCHA_LIBRARIES cabocha
+        find_library(CABOCHA_LIBRARIES
             NAMES cabocha libcabocha
             PATHS
                 ${CABOCHA_LIBRARY_HINT}
@@ -170,6 +172,8 @@ if(BUILD_WITH_CABOCHA)
                 "C:/Program Files/CaboCha/sdk"
                 "C:/cabocha/sdk"
         )
+        message(STATUS "  検索結果 - INCLUDE: ${CABOCHA_INCLUDE_DIRS}")
+        message(STATUS "  検索結果 - LIBRARY: ${CABOCHA_LIBRARIES}")
         if(CABOCHA_INCLUDE_DIRS AND CABOCHA_LIBRARIES)
             set(CABOCHA_LINK_LIBRARIES ${CABOCHA_LIBRARIES})
             set(CABOCHA_FOUND TRUE)

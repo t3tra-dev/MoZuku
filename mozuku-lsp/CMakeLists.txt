@@ -13,6 +13,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_subdirectory(third-party/json EXCLUDE_FROM_ALL)
 
+# vcpkg の unofficial-tree-sitter を先に試す（IMPORTED ターゲットを親スコープで利用可能にする）
+find_package(unofficial-tree-sitter CONFIG QUIET)
+
 add_subdirectory(third-party)
 
 if(NOT TREESITTER_FOUND)
