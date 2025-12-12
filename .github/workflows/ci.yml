@@ -350,6 +350,16 @@ jobs:
           $content = Get-Content -LiteralPath "src/Makefile.msvc.in" -Raw
           $content = $content.Replace('@VERSION@', $version).Replace('@MODEL_VERSION@', $modelVersion)
 
+          # Fix line continuation for DEFS (nmake is strict about backslashes)
+          $content = $content -replace "(\r?\n)\s*-DUNICODE", " -DUNICODE"
+          $content = $content -replace "(\r?\n)\s*-D_UNICODE", " -D_UNICODE"
+          $content = $content -replace "(\r?\n)\s*-DHAVE_STRING_H", " -DHAVE_STRING_H"
+          $content = $content -replace "(\r?\n)\s*-DHAVE_MEMSET", " -DHAVE_MEMSET"
+          $content = $content -replace "(\r?\n)\s*-DMODEL_VERSION", " -DMODEL_VERSION"
+
+          # Force UTF-8 RC path for this build to avoid escaping issues
+          $content = $content -replace "CABOCHA_DEFAULT_RC=\"\"c:\\\\Program Files\\\\cabocha\\\\etc\\\\cabocharc\"\"", "CABOCHA_DEFAULT_RC=\"\"c:\\\\cabocha\\\\etc\\\\cabocharc\"\""
+
           # Force UTF-8 as the default charset in this CI build.
           $content = $content -replace '(?m)^DEFS\s*=\s*(.*)$', 'DEFS = $1 -DCABOCHA_DEFAULT_CHARSET="\"UTF-8\""'
 
