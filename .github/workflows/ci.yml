@@ -350,14 +350,10 @@ jobs:
           $content = Get-Content -LiteralPath "src/Makefile.msvc.in" -Raw
           $content = $content.Replace('@VERSION@', $version).Replace('@MODEL_VERSION@', $modelVersion)
 
-          # Flatten DEFS into a single line (nmake is strict about backslashes)
-          $content = $content -replace "(?m)^DEFS\\s*=\\s*(.+)$", { param($m) \"DEFS = $($m.Groups[1].Value -replace \"\\s+\\\\\\s*\", \" \")\" }
-
-          # Force UTF-8 RC path for this build to avoid escaping issues
-          $content = $content -replace 'CABOCHA_DEFAULT_RC="\\"c:\\\\Program Files\\\\cabocha\\\\etc\\\\cabocharc\\""', 'CABOCHA_DEFAULT_RC="\\"c:\\\\cabocha\\\\etc\\\\cabocharc\\""'
-
-          # Force UTF-8 as the default charset in this CI build.
-          $content = $content -replace '(?m)^DEFS\s*=\s*(.*)$', 'DEFS = $1 -DCABOCHA_DEFAULT_CHARSET="\"UTF-8\""'
+          # Overwrite DEFS as a single line (nmake is strict about backslashes)
+          $defs = '-D_CRT_SECURE_NO_DEPRECATE -DDLL_EXPORT -DHAVE_GETENV -DUNICODE -D_UNICODE -DHAVE_WINDOWS_H -DHAVE_STRING_H -DHAVE_MEMSET ' +
+                  "-DMODEL_VERSION=$modelVersion -DVERSION=\"\"$version\"\" -DPACKAGE=\"\"cabocha\"\" -DCABOCHA_DEFAULT_RC=\"\"c:\\cabocha\\etc\\cabocharc\"\" -DCABOCHA_DEFAULT_CHARSET=\"\"UTF-8\"\""
+          $content = $content -replace '(?m)^DEFS\s*=.*$', 'DEFS = ' + $defs
 
           # Write without BOM (nmake is sensitive to BOM in some contexts)
           Set-Content -LiteralPath "src/Makefile.msvc" -Value $content -NoNewline -Encoding ascii
