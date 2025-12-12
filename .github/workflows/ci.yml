@@ -351,9 +351,13 @@ jobs:
           $content = $content.Replace('@VERSION@', $version).Replace('@MODEL_VERSION@', $modelVersion)
 
           # Overwrite DEFS as a single line (nmake is strict about backslashes)
-          $defs = '-D_CRT_SECURE_NO_DEPRECATE -DDLL_EXPORT -DHAVE_GETENV -DUNICODE -D_UNICODE -DHAVE_WINDOWS_H -DHAVE_STRING_H -DHAVE_MEMSET ' +
-                  "-DMODEL_VERSION=$modelVersion -DVERSION=\\\"$version\\\" -DPACKAGE=\\\"cabocha\\\" -DCABOCHA_DEFAULT_RC=\\\"c:\\\\cabocha\\\\etc\\\\cabocharc\\\" -DCABOCHA_DEFAULT_CHARSET=\\\"UTF-8\\\""
-          $content = $content -replace '(?m)^DEFS\s*=.*$', \"DEFS = $defs\"
+          $defs  = '-D_CRT_SECURE_NO_DEPRECATE -DDLL_EXPORT -DHAVE_GETENV -DUNICODE -D_UNICODE -DHAVE_WINDOWS_H -DHAVE_STRING_H -DHAVE_MEMSET '
+          $defs += "-DMODEL_VERSION=$modelVersion "
+          $defs += "-DVERSION=\\\"$version\\\" "
+          $defs += "-DPACKAGE=\\\"cabocha\\\" "
+          $defs += "-DCABOCHA_DEFAULT_RC=\\\"c:\\\\cabocha\\\\etc\\\\cabocharc\\\" "
+          $defs += "-DCABOCHA_DEFAULT_CHARSET=\\\"UTF-8\\\""
+          $content = $content -replace '(?m)^DEFS\s*=.*$', ('DEFS = ' + $defs)
 
           # Write without BOM (nmake is sensitive to BOM in some contexts)
           Set-Content -LiteralPath "src/Makefile.msvc" -Value $content -NoNewline -Encoding ascii
