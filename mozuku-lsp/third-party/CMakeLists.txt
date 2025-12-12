@@ -66,29 +66,56 @@ if(MECAB_CONFIG)
     message(STATUS "  リンクライブラリ: ${MECAB_LINK_LIBRARIES}")
 else()
     message(STATUS "mecab-configが見つかりません - 標準システムパスを試行中")
-    find_path(MECAB_INCLUDE_DIRS mecab.h
-        HINTS
-            ${MECAB_INCLUDE_HINT}
-        PATHS
-            /opt/homebrew/include
-            /opt/homebrew/Cellar/mecab/*/include
-            /usr/local/include
-            /usr/include
-            "C:/Program Files/MeCab/sdk"
-            "C:/mecab/sdk"
-    )
-    find_library(MECAB_LIBRARIES mecab
-        NAMES mecab libmecab
-        HINTS
-            ${MECAB_LIBRARY_HINT}
-        PATHS
-            /opt/homebrew/lib
-            /opt/homebrew/Cellar/mecab/*/lib
-            /usr/local/lib
-            /usr/lib
-            "C:/Program Files/MeCab/sdk"
-            "C:/mecab/sdk"
-    )
+    message(STATUS "  MECAB_INCLUDE_HINT: ${MECAB_INCLUDE_HINT}")
+    message(STATUS "  MECAB_LIBRARY_HINT: ${MECAB_LIBRARY_HINT}")
+
+    # HINTSが設定されている場合、直接ファイルの存在を確認
+    if(MECAB_INCLUDE_HINT AND EXISTS "${MECAB_INCLUDE_HINT}/mecab.h")
+        set(MECAB_INCLUDE_DIRS "${MECAB_INCLUDE_HINT}")
+        message(STATUS "  mecab.h を直接発見: ${MECAB_INCLUDE_DIRS}")
+    endif()
+    if(MECAB_LIBRARY_HINT)
+        # Windows: libmecab.lib (DLLのインポートライブラリ) を優先
+        if(EXISTS "${MECAB_LIBRARY_HINT}/libmecab.lib")
+            set(MECAB_LIBRARIES "${MECAB_LIBRARY_HINT}/libmecab.lib")
+            message(STATUS "  libmecab.lib を直接発見: ${MECAB_LIBRARIES}")
+        elseif(EXISTS "${MECAB_LIBRARY_HINT}/mecab.lib")
+            set(MECAB_LIBRARIES "${MECAB_LIBRARY_HINT}/mecab.lib")
+            message(STATUS "  mecab.lib を直接発見: ${MECAB_LIBRARIES}")
+        endif()
+    endif()
+
+    # 直接発見できなければ find_path/find_library を試す
+    if(NOT MECAB_INCLUDE_DIRS)
+        find_path(MECAB_INCLUDE_DIRS mecab.h
+            HINTS
+                ${MECAB_INCLUDE_HINT}
+            PATHS
+                /opt/homebrew/include
+                /opt/homebrew/Cellar/mecab/*/include
+                /usr/local/include
+                /usr/include
+                "C:/Program Files/MeCab/sdk"
+                "C:/mecab/sdk"
+        )
+    endif()
+    if(NOT MECAB_LIBRARIES)
+        find_library(MECAB_LIBRARIES
+            NAMES libmecab mecab
+            HINTS
+                ${MECAB_LIBRARY_HINT}
+            PATHS
+                /opt/homebrew/lib
+                /opt/homebrew/Cellar/mecab/*/lib
+                /usr/local/lib
+                /usr/lib
+                "C:/Program Files/MeCab/sdk"
+                "C:/mecab/sdk"
+        )
+    endif()
+
+    message(STATUS "  検索結果 - INCLUDE: ${MECAB_INCLUDE_DIRS}")
+    message(STATUS "  検索結果 - LIBRARY: ${MECAB_LIBRARIES}")
     if(MECAB_INCLUDE_DIRS AND MECAB_LIBRARIES)
         set(MECAB_FOUND TRUE)
         message(STATUS "システムパスでMeCabを発見:")

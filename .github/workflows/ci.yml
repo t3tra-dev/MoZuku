@@ -230,6 +230,11 @@ jobs:
           nmake -f Makefile.msvc
           Pop-Location
 
+          # Debug: show built files
+          Write-Host "=== MeCab build output ==="
+          Get-ChildItem -Path "src" -Filter "*.lib" | Select-Object Name
+          Get-ChildItem -Path "src" -Filter "*.dll" | Select-Object Name
+
       - name: Build MeCab IPADIC (MSVC)
         if: ${{ matrix.os == 'windows' }}
         shell: pwsh
