@@ -1,0 +1,7 @@
+[crfpp]
+src.git = "https://github.com/taku910/crfpp"
+fetch.github = "taku910/crfpp"
+
+[cabocha]
+src.git = "https://github.com/taku910/cabocha"
+fetch.github = "taku910/cabocha"
