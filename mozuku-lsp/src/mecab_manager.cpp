@@ -5,6 +5,12 @@
 #include <iostream>
 #include <mecab.h>
 
+// Windows MSVC: popen/pclose は _popen/_pclose
+#ifdef _MSC_VER
+#define popen _popen
+#define pclose _pclose
+#endif
+
 namespace MoZuku {
 namespace mecab {
 

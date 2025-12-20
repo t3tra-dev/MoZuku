@@ -21,6 +21,9 @@ else()
   message(STATUS "システムのnlohmann_jsonを使用します")
 endif()
 
+# vcpkg の unofficial-tree-sitter を先に試す（IMPORTED ターゲットを親スコープで利用可能にする）
+find_package(unofficial-tree-sitter CONFIG QUIET)
+
 add_subdirectory(third-party)
 
 find_package(PkgConfig)
@@ -124,7 +127,11 @@ set(MOZUKU_SOURCES
 add_executable(mozuku-lsp ${MOZUKU_SOURCES})
 
 target_include_directories(mozuku-lsp PRIVATE include)
-
+git pull git@github.com:t3tra-dev/MoZuku.git maingit pull git@github.com:t3tra-dev/MoZuku.git main
+<<<<<<< HEAD
+=======
+# Windows: min/max マクロを無効化して std::min/std::max との競合を防ぐ
+>>>>>>> 5b3c7075b76d0d8fb53669399a0810c7b22ebda4
 if(WIN32)
   target_compile_definitions(mozuku-lsp PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 endif()
@@ -158,6 +165,10 @@ target_link_libraries(mozuku-lsp PRIVATE Threads::Threads)
 if(APPLE)
     target_link_libraries(mozuku-lsp PRIVATE "-liconv")
 elseif(WIN32)
+<<<<<<< HEAD
+=======
+    # Windows: vcpkg の Iconv を使用
+>>>>>>> 5b3c7075b76d0d8fb53669399a0810c7b22ebda4
     find_package(Iconv REQUIRED)
     target_link_libraries(mozuku-lsp PRIVATE Iconv::Iconv)
 elseif(UNIX)

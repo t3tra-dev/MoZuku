@@ -120,28 +120,6 @@ jobs:
           make -j2
           sudo make install
 
-      - name: Install deps (Windows - MSYS2)
-        if: ${{ matrix.os == 'windows' }}
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-pkg-config
-            mingw-w64-x86_64-curl
-            mingw-w64-x86_64-tree-sitter
-            mingw-w64-x86_64-libiconv
-            git
-            autoconf
-            automake
-            libtool
-            make
-            patch
-            gettext
-
       - name: Install tree-sitter CLI (non-Windows)
         if: ${{ matrix.os != 'windows' }}
         run: |
@@ -156,47 +134,110 @@ jobs:
           $binDir = "$(npm prefix -g)\bin"
           echo "PATH=$binDir;$env:PATH" >> $env:GITHUB_ENV
 
-      - name: Build MeCab (Windows)
-        if: ${{ matrix.os == 'windows' }}
-        shell: msys2 {0}
+      - name: Generate tree-sitter-latex parser (non-Windows)
+        if: ${{ matrix.os != 'windows' }}
         run: |
-          git clone https://github.com/taku910/mecab.git
-          cd mecab/mecab
-          ./autogen.sh
-          ./configure --prefix=/mingw64 --with-charset=UTF8 LIBS="-liconv"
-          make -j2
-          make install
-          mkdir -p /mingw64/libexec/mecab
-          bin_path="$(find /mingw64 -name 'mecab-dict-index*' -maxdepth 6 | head -n1)"
-          if [ -z "$bin_path" ]; then
-            bin_path="$(find ./src -name 'mecab-dict-index*' -maxdepth 3 | head -n1)"
-          fi
-          if [ -n "$bin_path" ]; then
-            install -m 755 "$bin_path" /mingw64/libexec/mecab/mecab-dict-index.exe
-          else
-            echo "mecab-dict-index not found after build" && find /mingw64 -maxdepth 4 -type f | head
-          fi
+          cd mozuku-lsp/third-party/tree-sitter-latex
+          tree-sitter generate
 
-      - name: Build MeCab IPADIC (Windows)
+      - name: Generate tree-sitter-latex parser (Windows)
         if: ${{ matrix.os == 'windows' }}
-        shell: msys2 {0}
+        shell: pwsh
         run: |
-          cd mecab/mecab-ipadic
-          ./configure --prefix=/mingw64 --with-charset=utf8 --with-mecab-config=/mingw64/bin/mecab-config
-          make -j2
-          make install
-          mkdir -p /mingw64/libexec/mecab
-          bin_path="$(find /mingw64 -name 'mecab-dict-index*' -maxdepth 6 | head -n1)"
-          if [ -z "$bin_path" ]; then
-            bin_path="$(find ../mecab/src -name 'mecab-dict-index*' -maxdepth 2 | head -n1)"
-          fi
-          if [ -n "$bin_path" ]; then
-            if [ ! -e /mingw64/libexec/mecab/mecab-dict-index.exe ]; then
-              install -m 755 "$bin_path" /mingw64/libexec/mecab/mecab-dict-index.exe
-            fi
-          else
-            echo "mecab-dict-index still missing" && find /mingw64 -maxdepth 5 -type f | head
-          fi
+          cd mozuku-lsp\third-party\tree-sitter-latex
+          tree-sitter generate
+
+      - name: Setup MSVC dev cmd (Windows x86)
+        if: ${{ matrix.os == 'windows' }}
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
+      - name: Install vcpkg (Windows)
+        if: ${{ matrix.os == 'windows' }}
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "vcpkg")) {
+            git clone https://github.com/microsoft/vcpkg.git
+          }
+          .\vcpkg\bootstrap-vcpkg.bat -disableMetrics
+          $toolchain = "$(Resolve-Path .\vcpkg\scripts\buildsystems\vcpkg.cmake)"
+          Add-Content $env:GITHUB_ENV "CMAKE_TOOLCHAIN_FILE=$toolchain"
+          Add-Content $env:GITHUB_ENV "VCPKG_DEFAULT_TRIPLET=x86-windows"
+          Add-Content $env:GITHUB_ENV "VCPKG_TARGET_TRIPLET=x86-windows"
+
+      - name: Install dependencies via vcpkg (Windows)
+        if: ${{ matrix.os == 'windows' }}
+        shell: pwsh
+        run: |
+          .\vcpkg\vcpkg.exe install tree-sitter:x86-windows curl:x86-windows libiconv:x86-windows
+
+      - name: Checkout MeCab (Windows, MSVC)
+        if: ${{ matrix.os == 'windows' }}
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "mecab")) {
+            git clone https://github.com/taku910/mecab.git
+          }
+
+      - name: Generate MeCab Makefile.msvc
+        if: ${{ matrix.os == 'windows' }}
+        shell: pwsh
+        working-directory: mecab/mecab
+        run: |
+          $configureIn = Get-Content -LiteralPath "configure.in" -Raw
+
+          $version = "0.996"
+          if ($configureIn -match 'AM_INIT_AUTOMAKE\(mecab,\s*([0-9\.]+)\)') {
+            $version = $matches[1]
+          }
+
+          $dicVersion = "102"
+          if ($configureIn -match 'DIC_VERSION="([0-9]+)"') {
+            $dicVersion = $matches[1]
+          }
+
+          $content = Get-Content -LiteralPath "src/Makefile.msvc.in" -Raw
+          $content = $content.Replace('@VERSION@', $version).Replace('@DIC_VERSION@', $dicVersion)
+          Set-Content -LiteralPath "src/Makefile.msvc" -Value $content -NoNewline -Encoding ascii
+
+      - name: Build MeCab (MSVC)
+        if: ${{ matrix.os == 'windows' }}
+        shell: pwsh
+        working-directory: mecab/mecab
+        env:
+          CL: /utf-8
+        run: |
+          # MSVC向けに WPATH_FORCE を定義する (公式 Makefile.msvc では未定義のまま)
+          $common = Get-Content -LiteralPath "src/common.h" -Raw
+          $pattern = "#ifdef _WIN32\s*#ifdef __GNUC__\s*#define WPATH_FORCE\(path\) \(MeCab::Utf8ToWide\(path\).c_str\(\)\)\s*#define WPATH\(path\) \(path\)\s*#else\s*#define WPATH\(path\) WPATH_FORCE\(path\)\s*#endif"
+          $replacement = "#ifdef _WIN32`n#ifdef __GNUC__`n#define WPATH_FORCE(path) (MeCab::Utf8ToWide(path).c_str())`n#define WPATH(path) (path)`n#else`n#define WPATH_FORCE(path) (MeCab::Utf8ToWide(path).c_str())`n#define WPATH(path) WPATH_FORCE(path)`n#endif`n"
+          $common = [regex]::Replace($common, $pattern, $replacement, 'Singleline')
+          Set-Content -LiteralPath "src/common.h" -Value $common -NoNewline -Encoding ascii
+
+          # C++17互換修正: dictionary.cpp に <functional> を追加し、std::binary_function 依存を除去
+          $dict = Get-Content -LiteralPath "src/dictionary.cpp" -Raw
+          if ($dict -notmatch "<functional>") {
+            $dict = $dict -replace "#include <climits>", "#include <climits>`n#include <functional>"
+          }
+          $dictPattern = "template <typename T1, typename T2>\s*struct pair_1st_cmp:\s*public\s*std::binary_function<bool,\s*T1,\s*T2>\s*{\s*bool operator\(\)\(const std::pair<T1,\s*T2> &x1,\s*`r?`n\s*const std::pair<T1,\s*T2> &x2\)\s*{\s*return x1\.first < x2\.first;\s*}\s*};"
+          $dictReplacement = "template <typename T1, typename T2>`nstruct pair_1st_cmp {`n  bool operator()(const std::pair<T1, T2> &x1,`n                  const std::pair<T1, T2> &x2) const {`n    return x1.first < x2.first;`n  }`n};"
+          $dict = [regex]::Replace($dict, $dictPattern, $dictReplacement, 'Singleline')
+          Set-Content -LiteralPath "src/dictionary.cpp" -Value $dict -NoNewline -Encoding ascii
+
+          Push-Location src
+          nmake -f Makefile.msvc clean
+          nmake -f Makefile.msvc
+          Pop-Location
+
+      - name: Build MeCab IPADIC (MSVC)
+        if: ${{ matrix.os == 'windows' }}
+        shell: pwsh
+        working-directory: mecab/mecab-ipadic
+        run: |
+          # Use mecab-dict-index built by the previous step to generate IPA dictionary.
+          ..\mecab\src\mecab-dict-index.exe -d . -o . -f utf-8 -t utf-8
+          "UTF-8" | Out-File -FilePath charset-file.txt -Encoding ascii
 
       - name: Build CRF++ (Linux)
         if: ${{ matrix.os == 'linux' }}
@@ -250,46 +291,152 @@ jobs:
           sudo make install
           sudo ldconfig
 
-      - name: Build CRF++ (Windows)
+      - name: Checkout CRF++ (Windows, MSVC)
         if: ${{ matrix.os == 'windows' }}
-        shell: msys2 {0}
+        shell: pwsh
         run: |
-          git clone https://github.com/taku910/crfpp.git
-          cd crfpp
-          patch -p1 < ../patches/crfpp_fix.patch
-          sed -i 's/winmain.h //g' Makefile.am Makefile.in
-          sed -i '/winmain.h/d' crf_learn.cpp crf_test.cpp
-          mkdir -p m4
-          autoreconf -i
-          ./configure --prefix=/mingw64 --disable-shared CXXFLAGS="-std=c++11"
-          make -j2 libcrfpp.la
-          make install-libLTLIBRARIES install-includeHEADERS
+          if (-not (Test-Path "crfpp")) {
+            git clone https://github.com/taku910/crfpp.git
+          }
 
-      - name: Build CaboCha (Windows)
+      - name: Generate CRF++ Makefile.msvc
         if: ${{ matrix.os == 'windows' }}
-        shell: msys2 {0}
+        shell: pwsh
+        working-directory: crfpp
         run: |
-          git clone https://github.com/taku910/cabocha.git
-          cd cabocha
-          perl -0777 -i -pe "s/using std::hash_map;/using std::unordered_map;/g" src/common.h
-          perl -0777 -i -pe "s/#include <string>/#include <string>\n#include <unordered_map>\n#ifdef _WIN32\n#include <windows.h>\ninline std::wstring Utf8ToWideWin(const char *input) { if (!input) return std::wstring(); int len = MultiByteToWideChar(CP_UTF8,0,input,-1,NULL,0); if (len <= 0) return std::wstring(); std::wstring w(len, L'\\0'); MultiByteToWideChar(CP_UTF8,0,input,-1,&w[0],len); if (!w.empty() && w.back()==L'\\0') w.pop_back(); return w; }\n#undef WPATH\n#define WPATH(path) (CaboCha::Utf8ToWideWin(path).c_str())\n#endif/" src/common.h
-          autoreconf -i
-          ./configure --with-charset=UTF8 --with-mecab-config=/mingw64/bin/mecab-config --with-crfpp-config=/mingw64/bin/crf-config --prefix=/mingw64 CXXFLAGS="-std=c++11"
-          make -j2
-          make install
+          $configureIn = Get-Content -LiteralPath "configure.in" -Raw
+
+          $version = "0.59"
+          if ($configureIn -match 'AM_INIT_AUTOMAKE\(CRF\+\+,\s*([0-9\.]+)\)') {
+            $version = $matches[1]
+          }
+
+          $content = Get-Content -LiteralPath "Makefile.msvc.in" -Raw
+          $content = $content.Replace('@VERSION@', $version).Replace('@PACKAGE@', 'CRF++')
+          Set-Content -LiteralPath "Makefile.msvc" -Value $content -NoNewline -Encoding ascii
+
+      - name: Build CRF++ (MSVC)
+        if: ${{ matrix.os == 'windows' }}
+        shell: pwsh
+        working-directory: crfpp
+        env:
+          CL: /utf-8
+        run: |
+          # MSVC向け: string_buffer の << オーバーロードが重複するので unsigned int を削除
+          $common = Get-Content -LiteralPath "common.h" -Raw
+          $dupPattern = "string_buffer& operator<<\(unsigned int _n\)\s*{[^}]*}\s*"
+          $common = [regex]::Replace($common, $dupPattern, "", 'Singleline')
+          Set-Content -LiteralPath "common.h" -Value $common -NoNewline -Encoding ascii
+
+          # winmain.h への依存を削除
+          (Get-Content -LiteralPath "crf_learn.cpp" -Raw) -replace '#include \"winmain.h\"\s*', "" | Set-Content -LiteralPath "crf_learn.cpp" -NoNewline -Encoding ascii
+          (Get-Content -LiteralPath "crf_test.cpp" -Raw) -replace '#include \"winmain.h\"\s*', "" | Set-Content -LiteralPath "crf_test.cpp" -NoNewline -Encoding ascii
+
+          nmake -f Makefile.msvc clean
+          nmake -f Makefile.msvc
+
+      - name: Checkout CaboCha (Windows, MSVC)
+        if: ${{ matrix.os == 'windows' }}
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "cabocha")) {
+            git clone https://github.com/taku910/cabocha.git
+          }
+
+      - name: Generate CaboCha Makefile.msvc (UTF-8 default)
+        if: ${{ matrix.os == 'windows' }}
+        shell: pwsh
+        working-directory: cabocha
+        run: |
+          $configureIn = Get-Content -LiteralPath "configure.in" -Raw
+
+          $version = "0.69"
+          if ($configureIn -match 'AM_INIT_AUTOMAKE\(cabocha,\s*([0-9\.]+)\)') {
+            $version = $matches[1]
+          }
+
+          $modelVersion = "102"
+          if ($configureIn -match 'MODEL_VERSION="([0-9]+)"') {
+            $modelVersion = $matches[1]
+          }
+
+          # Read file as lines and rebuild, skipping DEFS continuation lines
+          $lines = Get-Content -LiteralPath "src/Makefile.msvc.in"
+          # Use the same quoting style as original Makefile.msvc.in: "\"value\""
+          $newDefs = 'DEFS = -D_CRT_SECURE_NO_DEPRECATE -D_SILENCE_STDEXT_HASH_DEPRECATION_WARNINGS -DDLL_EXPORT -DHAVE_GETENV -DUNICODE -D_UNICODE -DHAVE_WINDOWS_H -DHAVE_STRING_H -DHAVE_MEMSET ' +
+                     "-DMODEL_VERSION=$modelVersion " + '-DVERSION="\"' + $version + '\"" -DPACKAGE="\"cabocha\"" -DCABOCHA_DEFAULT_RC="\"c:\\cabocha\\etc\\cabocharc\"" -DCABOCHA_DEFAULT_CHARSET="\"UTF-8\""'
+
+          $output = @()
+          $inDefs = $false
+          foreach ($line in $lines) {
+            # Replace version placeholders
+            $line = $line.Replace('@VERSION@', $version).Replace('@MODEL_VERSION@', $modelVersion)
+
+            if ($line -match '^\s*DEFS\s*=') {
+              # Start of DEFS - output our replacement instead
+              $output += $newDefs
+              # Check if this line continues (ends with \)
+              $inDefs = $line.TrimEnd() -match '\\$'
+            } elseif ($inDefs) {
+              # Skip continuation lines of original DEFS
+              $inDefs = $line.TrimEnd() -match '\\$'
+            } else {
+              $output += $line
+            }
+          }
+
+          # Write without BOM
+          $output -join "`r`n" | Set-Content -LiteralPath "src/Makefile.msvc" -NoNewline -Encoding ascii
+
+      - name: Build CaboCha (nmake, MSVC)
+        if: ${{ matrix.os == 'windows' }}
+        shell: pwsh
+        working-directory: cabocha
+        env:
+          # Compile source files as UTF-8.
+          CL: /utf-8
+        run: |
+          Push-Location src
+          nmake -f Makefile.msvc clean
+          nmake -f Makefile.msvc
+          Pop-Location
+
+      - name: Upload CaboCha MSVC artifacts
+        if: ${{ matrix.os == 'windows' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cabocha-${{ matrix.os }}-${{ matrix.arch }}-msvc
+          if-no-files-found: error
+          path: |
+            cabocha/src/*.exe
+            cabocha/src/*.dll
+            cabocha/src/*.lib
+            cabocha/src/win32/libcrfpp.dll
 
       - name: Configure (CMake, non-Windows)
         if: ${{ matrix.os != 'windows' }}
         run: |
           cd mozuku-lsp
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_WITH_CABOCHA=ON
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Configure (CMake, Windows)
         if: ${{ matrix.os == 'windows' }}
-        shell: msys2 {0}
+        shell: pwsh
         run: |
+          $mecabSrc = Resolve-Path "mecab\mecab\src"
+          $cabochaSrc = Resolve-Path "cabocha\src"
+          $crfppSrc = Resolve-Path "crfpp"
+
           cd mozuku-lsp
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_WITH_CABOCHA=ON
+          cmake -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release `
+            "-DCMAKE_TOOLCHAIN_FILE=$env:CMAKE_TOOLCHAIN_FILE" `
+            "-DVCPKG_TARGET_TRIPLET=x86-windows" `
+            "-DMECAB_INCLUDE_HINT=$mecabSrc" `
+            "-DMECAB_LIBRARY_HINT=$mecabSrc" `
+            "-DCABOCHA_INCLUDE_HINT=$cabochaSrc" `
+            "-DCABOCHA_LIBRARY_HINT=$cabochaSrc" `
+            "-DCRFPP_INCLUDE_HINT=$crfppSrc" `
+            "-DCRFPP_LIBRARY_HINT=$crfppSrc"
 
       - name: Build LSP (CMake, non-Windows)
         if: ${{ matrix.os != 'windows' }}
@@ -299,7 +446,7 @@ jobs:
 
       - name: Build LSP (CMake, Windows)
         if: ${{ matrix.os == 'windows' }}
-        shell: msys2 {0}
+        shell: pwsh
         run: |
           cd mozuku-lsp
           cmake --build build --config Release
