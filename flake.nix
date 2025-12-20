@@ -50,27 +50,39 @@
             pname = "mozuku";
             version = "0.0.1";
             src = ./mozuku-lsp;
+	    cmakeGenerator = "Ninja";
 
-            nativebuildinputs = with pkgs; [
-              cmake
+            nativeBuildInputs = with pkgs; [
+	      mold
+	      cmake
+	      ninja
               pkg-config
+              tree-sitter
             ];
 
             buildInputs = with pkgs; [
-              nlohmann_json
               mecab
-              tree-sitter
-
               crfpp
               cabocha
+              curlFull
+              nlohmann_json
+
+              tree-sitter
+              tree-sitter-grammars.tree-sitter-c
+              tree-sitter-grammars.tree-sitter-cpp
+              tree-sitter-grammars.tree-sitter-html
+              tree-sitter-grammars.tree-sitter-javascript
+              tree-sitter-grammars.tree-sitter-latex
+              tree-sitter-grammars.tree-sitter-python
+              tree-sitter-grammars.tree-sitter-rust
+              tree-sitter-grammars.tree-sitter-typescript
+              tree-sitter-grammars.tree-sitter-tsx
             ];
 
-            buildPhase = ''
+	    installPhase = ''
+	      install -Dm755 mozuku-lsp $out/bin/mozuku-lsp
 	    '';
-
-            installPhase = ''
-	    '';
-          };
+	  };
 
           crfpp = stdenv.mkDerivation {
             pname = "crfpp";
@@ -84,12 +96,9 @@
               pkg-config
             ];
 
-            buildInputs = with pkgs; [
-            ];
-
             configureFlags = [ ];
 
-            buildPhase = ''
+            patchPhase = ''
               ./configure --prefix=$out
 
               cat > winmain.h << 'EOF'
@@ -98,13 +107,12 @@
               #define WINMAIN_H_
               #endif
               EOF
-
-              make
             '';
 
-            installPhase = ''
-              make install
-            '';
+            # installPhase = ''
+            #   make install
+            # '';
+	    enableParallelBuilding = true;
           };
 
           cabocha = stdenv.mkDerivation {
@@ -176,21 +184,28 @@
             packages = with pkgs; [
               nil
 
+	      mold
               cmake
+	      ninja
               curlFull
 
               # dependencies
-              tree-sitter
               mecab
               crfpp
               cabocha
-            ];
+              nlohmann_json
 
-            languages = {
-              cplusplus = {
-                enable = true;
-              };
-            };
+              tree-sitter
+              tree-sitter-grammars.tree-sitter-c
+              tree-sitter-grammars.tree-sitter-cpp
+              tree-sitter-grammars.tree-sitter-html
+              tree-sitter-grammars.tree-sitter-javascript
+              tree-sitter-grammars.tree-sitter-latex
+              tree-sitter-grammars.tree-sitter-python
+              tree-sitter-grammars.tree-sitter-rust
+              tree-sitter-grammars.tree-sitter-typescript
+              tree-sitter-grammars.tree-sitter-tsx
+            ];
 
             enterShell = '''';
           };
@@ -202,3 +217,4 @@
         };
     };
 }
+
