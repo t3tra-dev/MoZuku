@@ -8,6 +8,14 @@
     systems.url = "github:nix-systems/default";
     git-hooks-nix.url = "github:cachix/git-hooks.nix";
     devenv.url = "github:cachix/devenv";
+    crfpp = {
+      url = "github:taku910/crfpp/c603ea6fc2cc8e5317d2754971bc787da383f7e5";
+      flake = false;
+    };
+    cabocha = {
+      url = "github:taku910/cabocha/96e100a62f6dadceb490cdd61c8c15fb561f6674";
+      flake = false;
+    };
   };
 
   outputs =
@@ -36,35 +44,29 @@
         let
           stdenv = pkgs.stdenv;
 
-          generated = import ./_sources/generated.nix;
-          sources = generated {
-            inherit (pkgs)
-              fetchurl
-              fetchgit
-              fetchFromGitHub
-              dockerTools
-              ;
-          };
-
           mozuku-lsp = stdenv.mkDerivation {
-            pname = "mozuku";
+            pname = "mozuku-lsp";
             version = "0.0.1";
             src = ./mozuku-lsp;
-	    cmakeGenerator = "Ninja";
+            cmakeGenerator = "Ninja";
 
             nativeBuildInputs = with pkgs; [
-	      mold
-	      cmake
-	      ninja
+              mold-wrapped
+              cmake
+              ninja
               pkg-config
               tree-sitter
+            ];
+
+            NIX_LDFLAGS = [
+              "-fuse-ld=mold"
             ];
 
             buildInputs = with pkgs; [
               mecab
               crfpp
               cabocha
-              curlFull
+              curl
               nlohmann_json
 
               tree-sitter
@@ -78,16 +80,12 @@
               tree-sitter-grammars.tree-sitter-typescript
               tree-sitter-grammars.tree-sitter-tsx
             ];
-
-	    installPhase = ''
-	      install -Dm755 mozuku-lsp $out/bin/mozuku-lsp
-	    '';
-	  };
+          };
 
           crfpp = stdenv.mkDerivation {
             pname = "crfpp";
             version = "0.58";
-            src = sources.crfpp.src;
+            src = inputs.crfpp;
 
             nativeBuildInputs = with pkgs; [
               autoconf
@@ -95,8 +93,6 @@
               libtool
               pkg-config
             ];
-
-            configureFlags = [ ];
 
             patchPhase = ''
               ./configure --prefix=$out
@@ -109,16 +105,13 @@
               EOF
             '';
 
-            # installPhase = ''
-            #   make install
-            # '';
-	    enableParallelBuilding = true;
+            enableParallelBuilding = true;
           };
 
           cabocha = stdenv.mkDerivation {
             pname = "cabocha";
             version = "0.69";
-            src = sources.cabocha.src;
+            src = inputs.cabocha;
 
             nativeBuildInputs = with pkgs; [
               pkg-config
@@ -143,24 +136,14 @@
 
             enableParallelBuilding = true;
           };
-
-          git-secrets' = pkgs.writeShellApplication {
-            name = "git-secrets";
-            runtimeInputs = [ pkgs.git-secrets ];
-            text = ''
-              git secrets --scan
-            '';
-          };
         in
         {
-          # When execute `nix fmt`, formatting your code.
           treefmt = {
             projectRootFile = "flake.nix";
             programs = {
               nixfmt.enable = true;
+              clang-format.enable = true;
             };
-
-            settings.formatter = { };
           };
 
           pre-commit = {
@@ -169,13 +152,6 @@
               hooks = {
                 treefmt.enable = true;
                 ripsecrets.enable = true;
-                git-secrets = {
-                  enable = true;
-                  name = "git-secrets";
-                  entry = "${git-secrets'}/bin/git-secrets";
-                  language = "system";
-                  types = [ "text" ];
-                };
               };
             };
           };
@@ -184,9 +160,9 @@
             packages = with pkgs; [
               nil
 
-	      mold
+              mold
               cmake
-	      ninja
+              ninja
               curlFull
 
               # dependencies
@@ -206,15 +182,9 @@
               tree-sitter-grammars.tree-sitter-typescript
               tree-sitter-grammars.tree-sitter-tsx
             ];
-
-            enterShell = '''';
           };
 
-          packages = {
-            default = mozuku-lsp;
-            inherit crfpp cabocha;
-          };
+          packages.default = mozuku-lsp;
         };
     };
 }
-

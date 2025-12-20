@@ -178,6 +178,10 @@ install(TARGETS mozuku-lsp
     RUNTIME DESTINATION "${VSCODE_EXTENSION_DIR}/bin"
 )
 
+install(TARGETS mozuku-lsp
+        RUNTIME DESTINATION bin)
+
+
 add_custom_target(package-extension
     COMMAND ${CMAKE_COMMAND} --build . --target install
     COMMENT "VS Code拡張をLSPサーバーと共にパッケージ化中 (システムライブラリが必要) "

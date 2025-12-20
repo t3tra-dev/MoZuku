@@ -1,5 +1,22 @@
 {
   "nodes": {
+    "cabocha": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1740210131,
+        "narHash": "sha256-IlqOZTy+qmeZXpeUuMUBMyAIlKez/EmfUvr10NP1+84=",
+        "owner": "taku910",
+        "repo": "cabocha",
+        "rev": "96e100a62f6dadceb490cdd61c8c15fb561f6674",
+        "type": "github"
+      },
+      "original": {
+        "owner": "taku910",
+        "repo": "cabocha",
+        "rev": "96e100a62f6dadceb490cdd61c8c15fb561f6674",
+        "type": "github"
+      }
+    },
     "cachix": {
       "inputs": {
         "devenv": [
@@ -30,6 +47,23 @@
         "owner": "cachix",
         "ref": "latest",
         "repo": "cachix",
+        "type": "github"
+      }
+    },
+    "crfpp": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1740209950,
+        "narHash": "sha256-y6jSjy7svDaCEJs7aoREhD9i4sJjhhEcInSnzf8frOI=",
+        "owner": "taku910",
+        "repo": "crfpp",
+        "rev": "c603ea6fc2cc8e5317d2754971bc787da383f7e5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "taku910",
+        "repo": "crfpp",
+        "rev": "c603ea6fc2cc8e5317d2754971bc787da383f7e5",
         "type": "github"
       }
     },
@@ -337,6 +371,8 @@
     },
     "root": {
       "inputs": {
+        "cabocha": "cabocha",
+        "crfpp": "crfpp",
         "devenv": "devenv",
         "flake-parts": "flake-parts_2",
         "git-hooks-nix": "git-hooks-nix",
