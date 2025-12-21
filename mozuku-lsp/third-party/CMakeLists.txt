@@ -176,6 +176,12 @@ if(NOT CABOCHA_FOUND)
             set(CABOCHA_LIBRARIES "${CABOCHA_LIBRARY_HINT}/libcabocha.lib")
         elseif(EXISTS "${CABOCHA_LIBRARY_HINT}/cabocha.lib")
             set(CABOCHA_LIBRARIES "${CABOCHA_LIBRARY_HINT}/cabocha.lib")
+        elseif(EXISTS "${CABOCHA_LIBRARY_HINT}/libcabocha.so")
+            set(CABOCHA_LIBRARIES "${CABOCHA_LIBRARY_HINT}/libcabocha.so")
+        elseif(EXISTS "${CABOCHA_LIBRARY_HINT}/libcabocha.a")
+            set(CABOCHA_LIBRARIES "${CABOCHA_LIBRARY_HINT}/libcabocha.a")
+        elseif(EXISTS "${CABOCHA_LIBRARY_HINT}/libcabocha.dylib")
+            set(CABOCHA_LIBRARIES "${CABOCHA_LIBRARY_HINT}/libcabocha.dylib")
         endif()
     endif()
 
@@ -281,7 +287,6 @@ else()
     message(STATUS "CRF++が見つかりません（オプション）")
 endif()
 
-# 変数をPARENT_SCOPEに設定
 set(MECAB_FOUND ${MECAB_FOUND} PARENT_SCOPE)
 set(MECAB_INCLUDE_DIRS ${MECAB_INCLUDE_DIRS} PARENT_SCOPE)
 set(MECAB_LIBRARIES ${MECAB_LIBRARIES} PARENT_SCOPE)
@@ -295,7 +300,6 @@ set(CRFPP_FOUND ${CRFPP_FOUND} PARENT_SCOPE)
 set(CRFPP_INCLUDE_DIRS ${CRFPP_INCLUDE_DIRS} PARENT_SCOPE)
 set(CRFPP_LIBRARIES ${CRFPP_LIBRARIES} PARENT_SCOPE)
 
-# MeCab ターゲットの作成
 if(MECAB_FOUND)
     add_library(mecab_system INTERFACE IMPORTED GLOBAL)
 
@@ -318,7 +322,6 @@ else()
     message(FATAL_ERROR "MeCabが見つかりません。MeCab開発ライブラリをインストールしてください。")
 endif()
 
-# CaboCha ターゲットの作成
 add_library(cabocha_system INTERFACE IMPORTED GLOBAL)
 
 if(CABOCHA_INCLUDE_DIRS)
@@ -344,4 +347,3 @@ message(STATUS "cabocha_systemターゲットを作成")
 message(STATUS "システムライブラリ検索が完了:")
 message(STATUS "  MeCab: ${MECAB_FOUND}")
 message(STATUS "  CaboCha: ${CABOCHA_FOUND}")
-message(STATUS "  CRF++: ${CRFPP_FOUND}")
