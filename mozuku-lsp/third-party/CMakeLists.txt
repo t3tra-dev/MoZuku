@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 set(CMAKE_FIND_PACKAGE_PREFER_CONFIG TRUE)
 
+# tree-sitter の検索
 set(TREESITTER_FOUND FALSE)
 set(TREESITTER_INCLUDE_DIRS "")
 set(TREESITTER_CFLAGS_OTHER "")
@@ -32,6 +33,7 @@ else()
     endif()
 endif()
 
+# MeCab の検索
 find_program(MECAB_CONFIG mecab-config)
 
 if(MECAB_CONFIG)
@@ -115,6 +117,7 @@ else()
     endif()
 endif()
 
+# CaboCha の検索
 set(CABOCHA_FOUND FALSE)
 set(CABOCHA_INCLUDE_DIRS "")
 set(CABOCHA_LIBRARIES "")
@@ -173,6 +176,12 @@ if(NOT CABOCHA_FOUND)
             set(CABOCHA_LIBRARIES "${CABOCHA_LIBRARY_HINT}/libcabocha.lib")
         elseif(EXISTS "${CABOCHA_LIBRARY_HINT}/cabocha.lib")
             set(CABOCHA_LIBRARIES "${CABOCHA_LIBRARY_HINT}/cabocha.lib")
+        elseif(EXISTS "${CABOCHA_LIBRARY_HINT}/libcabocha.so")
+            set(CABOCHA_LIBRARIES "${CABOCHA_LIBRARY_HINT}/libcabocha.so")
+        elseif(EXISTS "${CABOCHA_LIBRARY_HINT}/libcabocha.a")
+            set(CABOCHA_LIBRARIES "${CABOCHA_LIBRARY_HINT}/libcabocha.a")
+        elseif(EXISTS "${CABOCHA_LIBRARY_HINT}/libcabocha.dylib")
+            set(CABOCHA_LIBRARIES "${CABOCHA_LIBRARY_HINT}/libcabocha.dylib")
         endif()
     endif()
 
@@ -227,6 +236,7 @@ if(NOT CABOCHA_FOUND)
     endif()
 endif()
 
+# CRF++ の検索
 # まずHINTSのみで検索
 if(CRFPP_INCLUDE_HINT)
     find_path(CRFPP_INCLUDE_DIRS crfpp.h
@@ -290,11 +300,6 @@ set(CRFPP_FOUND ${CRFPP_FOUND} PARENT_SCOPE)
 set(CRFPP_INCLUDE_DIRS ${CRFPP_INCLUDE_DIRS} PARENT_SCOPE)
 set(CRFPP_LIBRARIES ${CRFPP_LIBRARIES} PARENT_SCOPE)
 
-set(TREESITTER_FOUND ${TREESITTER_FOUND} PARENT_SCOPE)
-set(TREESITTER_INCLUDE_DIRS ${TREESITTER_INCLUDE_DIRS} PARENT_SCOPE)
-set(TREESITTER_LIBRARIES ${TREESITTER_LIBRARIES} PARENT_SCOPE)
-set(TREESITTER_CFLAGS_OTHER ${TREESITTER_CFLAGS_OTHER} PARENT_SCOPE)
-
 if(MECAB_FOUND)
     add_library(mecab_system INTERFACE IMPORTED GLOBAL)
 
@@ -314,7 +319,7 @@ if(MECAB_FOUND)
     endif()
     message(STATUS "mecab_systemターゲットを作成")
 else()
-    message(FATAL_ERROR "MeCabが見つかりません - MeCab開発ライブラリをインストールしてください")
+    message(FATAL_ERROR "MeCabが見つかりません。MeCab開発ライブラリをインストールしてください。")
 endif()
 
 add_library(cabocha_system INTERFACE IMPORTED GLOBAL)
@@ -339,29 +344,6 @@ endif()
 
 message(STATUS "cabocha_systemターゲットを作成")
 
-set(LATEX_PARSER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tree-sitter-latex")
-set(LATEX_PARSER_SRC "${LATEX_PARSER_DIR}/src/parser.c")
-
-if(NOT EXISTS "${LATEX_PARSER_SRC}")
-    find_program(TREE_SITTER_CLI tree-sitter REQUIRED)
-    message(STATUS "tree-sitter-latex パーサーを生成中...")
-    execute_process(
-        COMMAND ${TREE_SITTER_CLI} generate
-        WORKING_DIRECTORY ${LATEX_PARSER_DIR}
-        RESULT_VARIABLE GENERATE_RESULT
-        OUTPUT_QUIET
-        ERROR_QUIET
-    )
-
-    if(NOT GENERATE_RESULT EQUAL 0)
-        message(FATAL_ERROR "tree-sitter-latex パーサーの生成に失敗しました")
-    endif()
-    message(STATUS "tree-sitter-latex パーサーの生成に成功")
-else()
-    message(STATUS "tree-sitter-latex パーサーは既に存在します")
-endif()
-
 message(STATUS "システムライブラリ検索が完了:")
 message(STATUS "  MeCab: ${MECAB_FOUND}")
 message(STATUS "  CaboCha: ${CABOCHA_FOUND}")
-message(STATUS "  CRF++: ${CRFPP_FOUND}")

@@ -85,11 +85,11 @@ Position byteOffsetToPosition(const std::string &text,
       unsigned int cp = decodeCodePoint(text, i);
 
       // UTF-16エンコーディング:
-      // BMP文字は1コードユニット、その他は2コードユニット (サロゲートペア) 
+      // BMP文字は1コードユニット、その他は2コードユニット (サロゲートペア)
       if (cp <= 0xFFFF) {
         col16 += 1; // BMP文字: 1 UTF-16コードユニット
       } else {
-        col16 += 2; // 非BMP文字: 2 UTF-16コードユニット (サロゲートペア) 
+        col16 += 2; // 非BMP文字: 2 UTF-16コードユニット (サロゲートペア)
       }
 
       // 無限ループを防ぐ安全性チェック
@@ -121,7 +121,7 @@ size_t utf8ToUtf16Length(const std::string &utf8Str) {
       unsigned int cp = decodeCodePoint(utf8Str, i);
 
       // UTF-16エンコーディング:
-      // BMP文字は1コードユニット、その他は2コードユニット (サロゲートペア) 
+      // BMP文字は1コードユニット、その他は2コードユニット (サロゲートペア)
       if (cp <= 0xFFFF) {
         utf16Length += 1; // BMP character
       } else {
