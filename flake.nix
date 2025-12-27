@@ -90,7 +90,6 @@
                 ];
 
                 cmakeFlags = [
-                  "-DCMAKE_PREFIX_PATH=${targetPkgs.tree-sitter}"
                   "-DCABOCHA_INCLUDE_HINT=${cabocha}/include"
                   "-DCABOCHA_LIBRARY_HINT=${cabocha}/lib"
                   "-DCRFPP_INCLUDE_HINT=${crfpp}/include"
