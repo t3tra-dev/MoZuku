@@ -59,14 +59,15 @@
                 cmakeGenerator = "Ninja";
 
                 nativeBuildInputs = with pkgs; [
-                  mold-wrapped
                   cmake
                   ninja
                   pkg-config
                   tree-sitter
+                ] ++ pkgs.lib.optionals (stdenv.buildPlatform == stdenv.hostPlatform) [
+                  mold-wrapped
                 ];
 
-                NIX_LDFLAGS = [
+                NIX_LDFLAGS = pkgs.lib.optionals (stdenv.buildPlatform == stdenv.hostPlatform) [
                   "-fuse-ld=mold"
                 ];
 
@@ -95,6 +96,8 @@
                   "-DCRFPP_INCLUDE_HINT=${crfpp}/include"
                   "-DCRFPP_LIBRARY_HINT=${crfpp}/lib"
                 ];
+
+                PKG_CONFIG_PATH = "${targetPkgs.tree-sitter}/lib/pkgconfig";
               };
 
               crfpp = stdenv.mkDerivation {
