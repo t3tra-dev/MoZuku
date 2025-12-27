@@ -8,8 +8,14 @@ on:
 
 jobs:
   build:
-    name: Build (${{ matrix.os }}-${{ matrix.arch }})
+    name: Build (${{ matrix.os }}-${{ matrix.arch }}${{ matrix.libc && format('-{0}', matrix.libc) || '' }})
     runs-on: ${{ matrix.runner }}
+    # 現状は musl ビルドでのみ使用される
+    env:
+      ZLIB_VERSION: "1.3.1"
+      OPENSSL_VERSION: "3.5.4"
+      CURL_VERSION: "8.17.0"
+      TREESITTER_REF: "v0.26.3"
     strategy:
       fail-fast: false
       matrix:
@@ -17,19 +23,37 @@ jobs:
           - runner: ubuntu-latest
             os: linux
             arch: x86_64
+
           - runner: windows-latest
             os: windows
             arch: x86_64
+
           - runner: macos-15-intel
             os: macos
             arch: x86_64
+
           - runner: ubuntu-24.04-arm
             os: linux
             arch: aarch64
-            configure_flags: --build=arm-unknown-linux-gnu --host=arm-unknown-linux-gnu --target=arm-unknown-linux-gnu
+
           - runner: macos-latest
             os: macos
             arch: aarch64
+
+          - runner: ubuntu-latest
+            os: linux
+            arch: x86_64
+            libc: musl
+            toolchain: x86_64-linux-musl
+            configure_flags: --build=x86_64-pc-linux-gnu --host=x86_64-linux-musl --target=x86_64-linux-musl --disable-shared --enable-static
+
+          - runner: ubuntu-24.04-arm
+            os: linux
+            arch: aarch64
+            libc: musl
+            toolchain: aarch64-linux-musl
+            configure_flags: --build=aarch64-pc-linux-gnu --host=aarch64-linux-musl --target=aarch64-linux-musl --disable-shared --enable-static
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,6 +72,265 @@ jobs:
           sudo apt-get install -y build-essential ninja-build pkg-config \
             libcurl4-openssl-dev libtree-sitter-dev \
             git autoconf automake libtool libtool-bin patch gettext
+          mkdir -p /opt/autoconf
+          wget -O /opt/autoconf/config.sub 'https://git.savannah.gnu.org/gitweb/?p=config.git;a=blob_plain;f=config.sub;hb=HEAD'
+          wget -O /opt/autoconf/config.guess 'https://git.savannah.gnu.org/gitweb/?p=config.git;a=blob_plain;f=config.guess;hb=HEAD'
+
+      - name: Cache /opt/musl (musl deps)
+        id: musl-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /opt/musl
+          key: musl-${{ matrix.runner }}-${{ matrix.arch }}-${{ matrix.toolchain }}-zlib${{ env.ZLIB_VERSION }}-openssl${{ env.OPENSSL_VERSION }}-curl${{ env.CURL_VERSION }}-ts${{ env.TREESITTER_REF }}-v1
+          restore-keys: |
+            musl-${{ matrix.runner }}-${{ matrix.arch }}-${{ matrix.toolchain }}-
+            musl-${{ matrix.runner }}-${{ matrix.arch }}-
+            musl-${{ matrix.runner }}-
+
+      - name: Setup environment variable (Linux musl)
+        if: ${{ matrix.os == 'linux' && matrix.libc == 'musl' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "REAL_CC=${{ matrix.toolchain }}-gcc" >> "$GITHUB_ENV"
+          echo "REAL_CXX=${{ matrix.toolchain }}-g++" >> "$GITHUB_ENV"
+          echo "AR=${{ matrix.toolchain }}-gcc-ar" >> "$GITHUB_ENV"
+          echo "RANLIB=${{ matrix.toolchain }}-gcc-ranlib" >> "$GITHUB_ENV"
+          echo "STRIP=${GITHUB_WORKSPACE}/${{ matrix.toolchain }}-native/bin/strip" >> "$GITHUB_ENV"
+
+          echo "PREFIX=/opt/musl" >> "$GITHUB_ENV"
+          echo "CFLAGS=-O3 -pipe -fno-pie" >> "$GITHUB_ENV"
+          echo "CXXFLAGS=-O3 -pipe -fno-pie" >> "$GITHUB_ENV"
+          echo "LDFLAGS=-static -static-libgcc -static-libstdc++ -Wl,-Bstatic -no-pie" >> "$GITHUB_ENV"
+          echo "LIBS=-static" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG=pkg-config --static" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=/opt/musl/lib/pkgconfig:/opt/musl/share/pkgconfig" >> "$GITHUB_ENV"
+          echo "lt_cv_prog_compiler_static_works=yes" >> "$GITHUB_ENV"
+
+          echo "/opt/musl/${{ matrix.toolchain }}-native/bin" >> "$GITHUB_PATH"
+          echo "CC=/opt/musl/wrapper/ccwrap" >> "$GITHUB_ENV"
+          echo "CXX=/opt/musl/wrapper/cxxwrap" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=/opt/musl" >> "$GITHUB_ENV"
+          echo "CMAKE_LIBRARY_PATH=/opt/musl/lib" >> "$GITHUB_ENV"
+          echo "CMAKE_INCLUDE_PATH=/opt/musl/include" >> "$GITHUB_ENV"
+
+          echo "/opt/musl/bin" >> "$GITHUB_PATH"
+          echo "CURL_CONFIG=/opt/musl/bin/curl-config" >> "$GITHUB_ENV"
+
+      - name: Setup musl toolchain (Linux musl)
+        if: ${{ matrix.os == 'linux' && matrix.libc == 'musl' && steps.musl-cache.outputs.cache-hit != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sudo mkdir -p /opt/musl
+          sudo chown -R "$USER:$USER" /opt/musl
+
+          # musl.cc のインストール（公式は GitHub Actions からのリクエストをブロックしている）
+          curl -L "https://github.com/tsl0922/musl-toolchains/releases/download/2021-11-23/${{ matrix.toolchain }}-native.tgz" -o toolchain.tgz
+          tar -xzf toolchain.tgz -C /opt/musl/
+
+          mkdir -p /opt/musl/wrapper
+
+          # C / CXX のラッパーを生成
+          cat > /opt/musl/wrapper/ccwrap <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          real="${REAL_CC}"
+          args=("$@")
+
+          compile=0
+          for a in "${args[@]}"; do
+            [ "$a" = "-c" ] && compile=1 && break
+          done
+
+          out=()
+          i=0
+          n=${#args[@]}
+          while [ $i -lt $n ]; do
+            a="${args[$i]}"
+
+            if [ "$a" = "-rpath" ]; then i=$((i+2)); continue; fi
+            case "$a" in
+              -Wl,-rpath,*|-Wl,-rpath-link,*|-Wl,--rpath,*|-Wl,--rpath-link,*)
+                i=$((i+1)); continue;;
+              -Wl,-Bdynamic|-Wl,--dynamic|-Wl,--export-dynamic|-Wl,-dynamic-linker,*|-Wl,--dynamic-linker,*|-Bdynamic)
+                i=$((i+1)); continue;;
+            esac
+
+            if [ $compile -eq 0 ] && [[ "$a" == *.so ]]; then
+              aa="${a%.so}.a"
+              if [ -f "$aa" ]; then
+                out+=("$aa")
+              else
+                echo "static link requested but only shared lib found: $a" >&2
+                exit 1
+              fi
+              i=$((i+1))
+              continue
+            fi
+
+            out+=("$a")
+            i=$((i+1))
+          done
+
+          if [ $compile -eq 1 ]; then
+            exec "$real" "${out[@]}"
+          else
+            exec "$real" -static -static-libgcc -Wl,-Bstatic -no-pie "${out[@]}"
+          fi
+          EOF
+
+          cat > /opt/musl/wrapper/cxxwrap <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          real="${REAL_CXX}"
+          args=("$@")
+
+          compile=0
+          for a in "${args[@]}"; do
+            [ "$a" = "-c" ] && compile=1 && break
+          done
+
+          out=()
+          i=0
+          n=${#args[@]}
+          while [ $i -lt $n ]; do
+            a="${args[$i]}"
+
+            if [ "$a" = "-rpath" ]; then i=$((i+2)); continue; fi
+            case "$a" in
+              -Wl,-rpath,*|-Wl,-rpath-link,*|-Wl,--rpath,*|-Wl,--rpath-link,*)
+                i=$((i+1)); continue;;
+              -Wl,-Bdynamic|-Wl,--dynamic|-Wl,--export-dynamic|-Wl,-dynamic-linker,*|-Wl,--dynamic-linker,*|-Bdynamic)
+                i=$((i+1)); continue;;
+            esac
+
+            if [ $compile -eq 0 ] && [[ "$a" == *.so ]]; then
+              aa="${a%.so}.a"
+              if [ -f "$aa" ]; then
+                out+=("$aa")
+              else
+                echo "static link requested but only shared lib found: $a" >&2
+                exit 1
+              fi
+              i=$((i+1))
+              continue
+            fi
+
+            out+=("$a")
+            i=$((i+1))
+          done
+
+          if [ $compile -eq 1 ]; then
+            exec "$real" "${out[@]}"
+          else
+            exec "$real" -static -static-libgcc -static-libstdc++ -Wl,-Bstatic -no-pie "${out[@]}"
+          fi
+          EOF
+
+          chmod +x /opt/musl/wrapper/ccwrap /opt/musl/wrapper/cxxwrap
+
+      - name: Build static curl / OpenSSL / zlib / tree-sitter (Linux musl)
+        if: ${{ matrix.os == 'linux' && matrix.libc == 'musl' && steps.musl-cache.outputs.cache-hit != 'true' }}
+        shell: bash
+        run: |
+          if [ ! -f /opt/musl/lib/libcurl.a ]; then
+            # zlib のビルド
+            curl -L "https://zlib.net/zlib-${ZLIB_VERSION}.tar.gz" -o zlib.tgz
+            tar -xzf zlib.tgz
+            cd "zlib-${ZLIB_VERSION}"
+            ./configure --prefix=/opt/musl --static
+            make -j2
+            make install
+            cd ..
+
+            # OpenSSL のビルド
+            curl -L "https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz" -o openssl.tgz
+            tar -xzf openssl.tgz
+            cd "openssl-${OPENSSL_VERSION}"
+            case "${{ matrix.arch }}" in
+              x86_64) OPENSSL_TARGET=linux-x86_64 ;;
+              aarch64) OPENSSL_TARGET=linux-aarch64 ;;
+              *) exit 1 ;;
+            esac
+            ./Configure "$OPENSSL_TARGET" no-shared no-tests --prefix=/opt/musl --openssldir=/opt/musl/ssl
+            make -j2
+            make install_sw
+            if [ -d /opt/musl/lib64 ] && [ ! -e /opt/musl/lib/libssl.a ]; then
+              mkdir -p /opt/musl/lib
+              cp -a /opt/musl/lib64/. /opt/musl/lib/
+            fi
+            cd ..
+
+            # curl のビルド
+            curl -L "https://curl.se/download/curl-${CURL_VERSION}.tar.xz" -o curl.txz
+            tar -xJf curl.txz
+            cd "curl-${CURL_VERSION}"
+            ./configure \
+              --prefix=/opt/musl \
+              --host="${{ matrix.toolchain }}" \
+              --disable-shared \
+              --enable-static \
+              --disable-ldap \
+              --with-openssl=/opt/musl \
+              --with-zlib=/opt/musl \
+              --disable-docs --disable-manual \
+              --without-libpsl
+            make -j2
+            make install
+
+            # libcurl.a を libcurl とその依存関係を読み込みリンカスクリプトに置き換える
+            if [ -f /opt/musl/lib/libcurl.a ]; then
+              mv /opt/musl/lib/libcurl.a /opt/musl/lib/libcurl_real.a
+              printf '%s\n' \
+                '/* GNU ld linker script: bundle libcurl with its static deps */' \
+                'INPUT (' \
+                '  /opt/musl/lib/libcurl_real.a' \
+                '  /opt/musl/lib/libz.a' \
+                '  /opt/musl/lib/libssl.a' \
+                '  /opt/musl/lib/libcrypto.a' \
+                ')' \
+              > /opt/musl/lib/libcurl.a
+            fi
+            cd ..
+          fi
+
+          # tree-sitter のビルド
+          if [ ! -f "$PREFIX/include/tree_sitter/api.h" ]; then
+            rm -rf tree-sitter
+            git clone --depth 1 --branch "$TREESITTER_REF" https://github.com/tree-sitter/tree-sitter.git
+            cmake -S tree-sitter -B tree-sitter/build -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+              -DBUILD_SHARED_LIBS=OFF
+            cmake --build tree-sitter/build --target install
+          fi
+          
+      - name: Fix libstdc++.la libdir (Linux musl)
+        if: ${{ matrix.os == 'linux' && matrix.libc == 'musl' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          export STDLIB_A="$($CXX -print-file-name=libstdc++.a)"
+          export STDLIB_DIR="$(dirname "$STDLIB_A")"
+          export STDLIB_LA="$STDLIB_DIR/libstdc++.la"
+          if [ -f "$STDLIB_LA" ]; then
+            sed -i "s|^libdir=.*|libdir='$STDLIB_DIR'|" "$STDLIB_LA"
+          else
+            tee "$STDLIB_LA" >/dev/null <<EOF
+          dlname=''
+          library_names='libstdc++.a'
+          old_library='libstdc++.a'
+          installed=yes
+          shouldnotlink=no
+          dlopen=''
+          dlpreopen=''
+          libdir='$STDLIB_DIR'
+          EOF
+          fi
 
       - name: Install deps (macOS)
         if: ${{ matrix.os == 'macos' }}
@@ -239,13 +522,87 @@ jobs:
           ..\mecab\src\mecab-dict-index.exe -d . -o . -f utf-8 -t utf-8
           "UTF-8" | Out-File -FilePath charset-file.txt -Encoding ascii
 
-      - name: Build CRF++ (Linux)
-        if: ${{ matrix.os == 'linux' }}
+      - name: Build CRF++ (Linux musl)
+        if: ${{ matrix.os == 'linux' && matrix.libc == 'musl' }}
         env:
           CONFIGURE_FLAGS: ${{ matrix.configure_flags }}
         run: |
           git clone https://github.com/taku910/crfpp.git
           cd crfpp
+
+          cp /opt/autoconf/config.* .
+
+          autoreconf -fi || true
+          
+          sed -i 's/\r$//' ../patches/crfpp_fix.patch
+          patch -p1 < ../patches/crfpp_fix.patch
+          sed -i 's/winmain.h //g' Makefile.am Makefile.in
+          sed -i '/winmain.h/d' crf_learn.cpp crf_test.cpp
+          ./configure --prefix="$PREFIX" CXXFLAGS="-std=c++11 $CXXFLAGS" $CONFIGURE_FLAGS
+          make -j2
+          make install
+
+      - name: Build MeCab (Linux musl)
+        if: ${{ matrix.os == 'linux' && matrix.libc == 'musl' }}
+        env:
+          CONFIGURE_FLAGS: ${{ matrix.configure_flags }}
+        run: |
+          git clone https://github.com/taku910/mecab.git
+          cd mecab/mecab
+
+          cp /opt/autoconf/config.* .
+
+          autoreconf -fi || true
+          make distclean || true
+
+          ./configure \
+            --prefix=/opt/musl \
+            --with-charset=UTF8 \
+            $CONFIGURE_FLAGS \
+
+          make V=1 -j2
+          make install
+
+      - name: Build MeCab IPADIC (Linux musl)
+        if: ${{ matrix.os == 'linux' && matrix.libc == 'musl' }}
+        run: |
+          cd mecab/mecab-ipadic
+          ./configure --prefix="$PREFIX" --with-charset=utf8 --with-mecab-config="$PREFIX/bin/mecab-config"
+          make -j2
+          make install
+
+      - name: Build CaboCha (Linux musl)
+        if: ${{ matrix.os == 'linux' && matrix.libc == 'musl' }}
+        env:
+          CONFIGURE_FLAGS: ${{ matrix.configure_flags }}
+        run: |
+          export CPPFLAGS="-I$PREFIX/include"
+          export LDFLAGS="-L$PREFIX/lib $LDFLAGS"
+          export LIBS="-lcrfpp $LIBS"
+          git clone https://github.com/taku910/cabocha.git
+          cd cabocha
+          autoreconf -i
+
+          cp /opt/autoconf/config.* .
+
+          autoreconf -fi || true
+          
+          ./configure --with-charset=utf-8 \
+            --with-mecab-config="$PREFIX/bin/mecab-config" \
+            --with-crfpp-config="$PREFIX/bin/crf-config" \
+            --prefix="$PREFIX" CXXFLAGS="-std=c++11 $CXXFLAGS" LDFLAGS="$LDFLAGS" \
+            $CONFIGURE_FLAGS
+          export STDLIB_A="$($CXX -print-file-name=libstdc++.a)"
+          export STDLIB_DIR="$(dirname "$STDLIB_A")"
+          make -j2
+          make install
+
+      - name: Build CRF++ (Linux)
+        if: ${{ matrix.os == 'linux' && matrix.libc != 'musl' }}
+        run: |
+          git clone https://github.com/taku910/crfpp.git
+          cd crfpp
+          cp /opt/autoconf/config.* .
           sed -i 's/\r$//' ../patches/crfpp_fix.patch
           patch -p1 < ../patches/crfpp_fix.patch
           sed -i 's/winmain.h //g' Makefile.am Makefile.in
@@ -256,12 +613,13 @@ jobs:
           sudo ldconfig
 
       - name: Build MeCab (Linux)
-        if: ${{ matrix.os == 'linux' }}
+        if: ${{ matrix.os == 'linux' && matrix.libc != 'musl' }}
         env:
           CONFIGURE_FLAGS: ${{ matrix.configure_flags }}
         run: |
           git clone https://github.com/taku910/mecab.git
           cd mecab/mecab
+          cp /opt/autoconf/config.* .
           ./autogen.sh
           ./configure --prefix=/usr --with-charset=UTF8 $CONFIGURE_FLAGS
           make -j2
@@ -270,7 +628,7 @@ jobs:
           sudo ldconfig
 
       - name: Build MeCab IPADIC (Linux)
-        if: ${{ matrix.os == 'linux' }}
+        if: ${{ matrix.os == 'linux' && matrix.libc != 'musl' }}
         run: |
           cd mecab/mecab-ipadic
           ./configure --prefix=/usr --with-charset=utf8 --with-mecab-config=/usr/bin/mecab-config
@@ -279,12 +637,11 @@ jobs:
           sudo ldconfig
 
       - name: Build CaboCha (Linux)
-        if: ${{ matrix.os == 'linux' }}
-        env:
-          CONFIGURE_FLAGS: ${{ matrix.configure_flags }}
+        if: ${{ matrix.os == 'linux' && matrix.libc != 'musl' }}
         run: |
           git clone https://github.com/taku910/cabocha.git
           cd cabocha
+          cp /opt/autoconf/config.* .
           autoreconf -i
           ./configure --with-charset=utf-8 --with-mecab-config=/usr/bin/mecab-config --with-crfpp-config=/usr/bin/crf-config --prefix=/usr CXXFLAGS="-std=c++11" $CONFIGURE_FLAGS
           make -j2
@@ -413,8 +770,21 @@ jobs:
             cabocha/src/*.lib
             cabocha/src/win32/libcrfpp.dll
 
+      - name: Configure (CMake, Linux musl)
+        if: ${{ matrix.os == 'linux' && matrix.libc == 'musl' }}
+        run: |
+          cd mozuku-lsp
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$PREFIX" \
+            -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" \
+            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
+            -DCMAKE_FIND_ROOT_PATH="$PREFIX" \
+            -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+            -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+            -DCMAKE_EXE_LINKER_FLAGS="-static"
+
       - name: Configure (CMake, non-Windows)
-        if: ${{ matrix.os != 'windows' }}
+        if: ${{ matrix.os != 'windows' && !(matrix.os == 'linux' && matrix.libc == 'musl') }}
         run: |
           cd mozuku-lsp
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -463,7 +833,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: mozuku-${{ matrix.os }}-${{ matrix.arch }}
+          name: mozuku-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.libc && format('-{0}', matrix.libc) || '' }}
           path: |
             mozuku-lsp/build/mozuku-lsp*
             vscode-mozuku/dist/**
