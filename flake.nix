@@ -95,6 +95,8 @@
                   "-DCRFPP_INCLUDE_HINT=${crfpp}/include"
                   "-DCRFPP_LIBRARY_HINT=${crfpp}/lib"
                 ];
+
+                PKG_CONFIG_PATH = "${targetPkgs.tree-sitter}/lib/pkgconfig";
               };
 
               crfpp = stdenv.mkDerivation {

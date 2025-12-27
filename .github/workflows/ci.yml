@@ -17,24 +17,35 @@ jobs:
           - runner: ubuntu-latest
             os: linux
             arch: x86_64
+            use_nix: true
           - runner: windows-latest
             os: windows
             arch: x86_64
+            use_nix: false
           - runner: macos-15-intel
             os: macos
             arch: x86_64
+            use_nix: true
           - runner: ubuntu-24.04-arm
             os: linux
             arch: aarch64
+            use_nix: true
             configure_flags: --build=arm-unknown-linux-gnu --host=arm-unknown-linux-gnu --target=arm-unknown-linux-gnu
           - runner: macos-latest
             os: macos
             arch: aarch64
+            use_nix: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Install Nix
+        if: ${{ matrix.use_nix }}
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -42,7 +53,7 @@ jobs:
           node-version: "20"
 
       - name: Install deps (Linux)
-        if: ${{ matrix.os == 'linux' }}
+        if: ${{ matrix.os == 'linux' && !matrix.use_nix }}
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential ninja-build pkg-config \
@@ -50,18 +61,18 @@ jobs:
             git autoconf automake libtool libtool-bin patch gettext
 
       - name: Install deps (macOS)
-        if: ${{ matrix.os == 'macos' }}
+        if: ${{ matrix.os == 'macos' && !matrix.use_nix }}
         run: |
           brew update
           brew install ninja pkg-config autoconf automake libtool gpatch gettext curl tree-sitter
 
       - name: Build CRF++ (macOS)
-        if: ${{ matrix.os == 'macos' }}
+        if: ${{ matrix.os == 'macos' && !matrix.use_nix }}
         run: |
           git clone https://github.com/taku910/crfpp.git
           cd crfpp
           PATCH_CMD="$(command -v gpatch || command -v patch)"
-          $PATCH_CMD -p1 < ../patches/crfpp_fix.patch
+          "$PATCH_CMD" -p1 < ../patches/crfpp_fix.patch
           sed -i '' 's/winmain.h //g' Makefile.am Makefile.in
           sed -i '' '/winmain.h/d' crf_learn.cpp crf_test.cpp
           ./configure --prefix=/usr/local CXXFLAGS="-std=c++11"
@@ -69,18 +80,22 @@ jobs:
           sudo make install
 
       - name: Build MeCab (macOS)
-        if: ${{ matrix.os == 'macos' }}
+        if: ${{ matrix.os == 'macos' && !matrix.use_nix }}
         run: |
           git clone https://github.com/taku910/mecab.git
           cd mecab/mecab
-          export LIBTOOL_DIR="$(brew --prefix libtool)/bin"
+          LIBTOOL_DIR="$(brew --prefix libtool)/bin"
+          export LIBTOOL_DIR
           mkdir -p /tmp/libtool-bin
           ln -sf "${LIBTOOL_DIR}/glibtoolize" /tmp/libtool-bin/libtoolize
           ln -sf "${LIBTOOL_DIR}/glibtool" /tmp/libtool-bin/libtool
           export PATH="/tmp/libtool-bin:${LIBTOOL_DIR}:$PATH"
-          export LIBTOOLIZE="${LIBTOOL_DIR}/glibtoolize"
-          export LIBTOOL="${LIBTOOL_DIR}/glibtool"
-          export ACLOCAL_PATH="$(brew --prefix gettext)/share/aclocal:${ACLOCAL_PATH}"
+          LIBTOOLIZE="${LIBTOOL_DIR}/glibtoolize"
+          export LIBTOOLIZE
+          LIBTOOL="${LIBTOOL_DIR}/glibtool"
+          export LIBTOOL
+          ACLOCAL_PATH="$(brew --prefix gettext)/share/aclocal:${ACLOCAL_PATH}"
+          export ACLOCAL_PATH
           ./autogen.sh
           ./configure --prefix=/usr/local --with-charset=UTF8
           make -j2
@@ -88,7 +103,7 @@ jobs:
           sudo make install
 
       - name: Build MeCab IPADIC (macOS)
-        if: ${{ matrix.os == 'macos' }}
+        if: ${{ matrix.os == 'macos' && !matrix.use_nix }}
         run: |
           cd mecab/mecab-ipadic
           ./configure --prefix=/usr/local --with-charset=utf8 --with-mecab-config=/usr/local/bin/mecab-config
@@ -96,32 +111,37 @@ jobs:
           sudo make install
 
       - name: Build CaboCha (macOS)
-        if: ${{ matrix.os == 'macos' }}
+        if: ${{ matrix.os == 'macos' && !matrix.use_nix }}
         run: |
           git clone https://github.com/taku910/cabocha.git
           cd cabocha
-          export LIBTOOL_DIR="$(brew --prefix libtool)/bin"
+          LIBTOOL_DIR="$(brew --prefix libtool)/bin"
+          export LIBTOOL_DIR
           mkdir -p /tmp/libtool-bin
           ln -sf "${LIBTOOL_DIR}/glibtoolize" /tmp/libtool-bin/libtoolize
           ln -sf "${LIBTOOL_DIR}/glibtool" /tmp/libtool-bin/libtool
           export PATH="/tmp/libtool-bin:${LIBTOOL_DIR}:$PATH"
-          export LIBTOOLIZE="${LIBTOOL_DIR}/glibtoolize"
-          export LIBTOOL="${LIBTOOL_DIR}/glibtool"
-          export ACLOCAL_PATH="$(brew --prefix gettext)/share/aclocal:${ACLOCAL_PATH}"
+          LIBTOOLIZE="${LIBTOOL_DIR}/glibtoolize"
+          export LIBTOOLIZE
+          LIBTOOL="${LIBTOOL_DIR}/glibtool"
+          export LIBTOOL
+          ACLOCAL_PATH="$(brew --prefix gettext)/share/aclocal:${ACLOCAL_PATH}"
+          export ACLOCAL_PATH
           mkdir -p m4
           printf 'AC_DEFUN([AM_ICONV], [])\n' > m4/am_iconv.m4
           ICONV_M4="$(brew --prefix gettext)/share/aclocal/iconv.m4"
           if [ -f "$ICONV_M4" ]; then
             cp "$ICONV_M4" m4/
           fi
-          export ACLOCAL="aclocal -I m4"
-          ACLOCAL="aclocal -I m4" autoreconf -fi
+          ACLOCAL="aclocal -I m4"
+          export ACLOCAL
+          "$ACLOCAL" autoreconf -fi
           ./configure --with-charset=utf8 --with-mecab-config=/usr/local/bin/mecab-config --with-crfpp-config=/usr/local/bin/crf-config --prefix=/usr/local CXXFLAGS="-std=c++11"
           make -j2
           sudo make install
 
       - name: Install tree-sitter CLI (non-Windows)
-        if: ${{ matrix.os != 'windows' }}
+        if: ${{ matrix.os != 'windows' && !matrix.use_nix }}
         run: |
           npm install -g tree-sitter-cli
           BIN_DIR="$(npm prefix -g)/bin"
@@ -135,7 +155,7 @@ jobs:
           echo "PATH=$binDir;$env:PATH" >> $env:GITHUB_ENV
 
       - name: Generate tree-sitter-latex parser (non-Windows)
-        if: ${{ matrix.os != 'windows' }}
+        if: ${{ matrix.os != 'windows' && !matrix.use_nix }}
         run: |
           cd mozuku-lsp/third-party/tree-sitter-latex
           tree-sitter generate
@@ -240,7 +260,7 @@ jobs:
           "UTF-8" | Out-File -FilePath charset-file.txt -Encoding ascii
 
       - name: Build CRF++ (Linux)
-        if: ${{ matrix.os == 'linux' }}
+        if: ${{ matrix.os == 'linux' && !matrix.use_nix }}
         env:
           CONFIGURE_FLAGS: ${{ matrix.configure_flags }}
         run: |
@@ -250,27 +270,27 @@ jobs:
           patch -p1 < ../patches/crfpp_fix.patch
           sed -i 's/winmain.h //g' Makefile.am Makefile.in
           sed -i '/winmain.h/d' crf_learn.cpp crf_test.cpp
-          ./configure --prefix=/usr CXXFLAGS="-std=c++11" $CONFIGURE_FLAGS
+          ./configure --prefix=/usr CXXFLAGS="-std=c++11" ${CONFIGURE_FLAGS}
           make -j2
           sudo make install
           sudo ldconfig
 
       - name: Build MeCab (Linux)
-        if: ${{ matrix.os == 'linux' }}
+        if: ${{ matrix.os == 'linux' && !matrix.use_nix }}
         env:
           CONFIGURE_FLAGS: ${{ matrix.configure_flags }}
         run: |
           git clone https://github.com/taku910/mecab.git
           cd mecab/mecab
           ./autogen.sh
-          ./configure --prefix=/usr --with-charset=UTF8 $CONFIGURE_FLAGS
+          ./configure --prefix=/usr --with-charset=UTF8 ${CONFIGURE_FLAGS}
           make -j2
           make check || true
           sudo make install
           sudo ldconfig
 
       - name: Build MeCab IPADIC (Linux)
-        if: ${{ matrix.os == 'linux' }}
+        if: ${{ matrix.os == 'linux' && !matrix.use_nix }}
         run: |
           cd mecab/mecab-ipadic
           ./configure --prefix=/usr --with-charset=utf8 --with-mecab-config=/usr/bin/mecab-config
@@ -279,14 +299,14 @@ jobs:
           sudo ldconfig
 
       - name: Build CaboCha (Linux)
-        if: ${{ matrix.os == 'linux' }}
+        if: ${{ matrix.os == 'linux' && !matrix.use_nix }}
         env:
           CONFIGURE_FLAGS: ${{ matrix.configure_flags }}
         run: |
           git clone https://github.com/taku910/cabocha.git
           cd cabocha
           autoreconf -i
-          ./configure --with-charset=utf-8 --with-mecab-config=/usr/bin/mecab-config --with-crfpp-config=/usr/bin/crf-config --prefix=/usr CXXFLAGS="-std=c++11" $CONFIGURE_FLAGS
+          ./configure --with-charset=utf-8 --with-mecab-config=/usr/bin/mecab-config --with-crfpp-config=/usr/bin/crf-config --prefix=/usr CXXFLAGS="-std=c++11" ${CONFIGURE_FLAGS}
           make -j2
           sudo make install
           sudo ldconfig
@@ -413,8 +433,15 @@ jobs:
             cabocha/src/*.lib
             cabocha/src/win32/libcrfpp.dll
 
+      - name: Build with Nix (Linux/macOS)
+        if: ${{ matrix.use_nix }}
+        run: |
+          nix build --print-build-logs
+          mkdir -p mozuku-lsp/build
+          cp -L result/bin/mozuku-lsp mozuku-lsp/build/
+
       - name: Configure (CMake, non-Windows)
-        if: ${{ matrix.os != 'windows' }}
+        if: ${{ matrix.os != 'windows' && !matrix.use_nix }}
         run: |
           cd mozuku-lsp
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -439,7 +466,7 @@ jobs:
             "-DCRFPP_LIBRARY_HINT=$crfppSrc"
 
       - name: Build LSP (CMake, non-Windows)
-        if: ${{ matrix.os != 'windows' }}
+        if: ${{ matrix.os != 'windows' && !matrix.use_nix }}
         run: |
           cd mozuku-lsp
           cmake --build build --config Release
