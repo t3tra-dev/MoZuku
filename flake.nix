@@ -59,14 +59,15 @@
                 cmakeGenerator = "Ninja";
 
                 nativeBuildInputs = with pkgs; [
-                  mold-wrapped
                   cmake
                   ninja
                   pkg-config
                   tree-sitter
+                ] ++ pkgs.lib.optionals (stdenv.buildPlatform == stdenv.hostPlatform && stdenv.isLinux) [
+                  mold-wrapped
                 ];
 
-                NIX_LDFLAGS = [
+                NIX_LDFLAGS = pkgs.lib.optionals (stdenv.buildPlatform == stdenv.hostPlatform && stdenv.isLinux) [
                   "-fuse-ld=mold"
                 ];
 
@@ -95,6 +96,8 @@
                   "-DCRFPP_INCLUDE_HINT=${crfpp}/include"
                   "-DCRFPP_LIBRARY_HINT=${crfpp}/lib"
                 ];
+
+                PKG_CONFIG_PATH = "${targetPkgs.tree-sitter}/lib/pkgconfig";
               };
 
               crfpp = stdenv.mkDerivation {
@@ -132,6 +135,10 @@
                 preConfigure = ''
                   rm -f configure
                   autoreconf -vfi
+                '';
+
+                preBuild = ''
+                  makeFlagsArray+=(CXXFLAGS="-std=c++11 -O2 -Wall")
                 '';
 
                 enableParallelBuilding = true;
@@ -176,6 +183,10 @@
                     export ACLOCAL_PATH="${pkgs.gettext}/share/aclocal:$ACLOCAL_PATH"
                     autoreconf -vfi
                   fi
+                '';
+
+                preBuild = ''
+                  makeFlagsArray+=(CXXFLAGS="-std=c++11 -O2 -Wall")
                 '';
 
                 makeFlags =
