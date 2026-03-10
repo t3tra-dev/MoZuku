@@ -186,6 +186,52 @@ TextProcessor::splitIntoSentences(const std::string &text) {
   return sentences;
 }
 
+double TextProcessor::calculateJapaneseRatio(const std::string &text) {
+  if (text.empty()) {
+    return 0.0;
+  }
+
+  size_t japaneseCount = 0;
+  size_t visibleCount = 0;
+
+  for (size_t i = 0; i < text.size(); ++i) {
+    unsigned char c = static_cast<unsigned char>(text[i]);
+    size_t seqLen = 1;
+
+    if (c < 0x80) {
+      seqLen = 1;
+    } else if ((c & 0xE0) == 0xC0) {
+      seqLen = 2;
+    } else if ((c & 0xF0) == 0xE0) {
+      seqLen = 3;
+    } else if ((c & 0xF8) == 0xF0) {
+      seqLen = 4;
+    } else {
+      continue;
+    }
+
+    if (!isValidUtf8Sequence(text, i, seqLen)) {
+      continue;
+    }
+
+    uint32_t codepoint = decodeCodepoint(text, i, seqLen);
+    if (!isWhitespaceCodepoint(codepoint)) {
+      ++visibleCount;
+      if (isJapaneseCodepoint(codepoint)) {
+        ++japaneseCount;
+      }
+    }
+
+    i += seqLen - 1;
+  }
+
+  if (visibleCount == 0) {
+    return 0.0;
+  }
+
+  return static_cast<double>(japaneseCount) / static_cast<double>(visibleCount);
+}
+
 bool TextProcessor::isJapanesePunctuation(const std::string &text, size_t pos) {
   if (pos + 2 >= text.size())
     return false;
@@ -235,6 +281,48 @@ bool TextProcessor::isValidUtf8Sequence(const std::string &input, size_t pos,
     }
   }
   return true;
+}
+
+uint32_t TextProcessor::decodeCodepoint(const std::string &text, size_t pos,
+                                        size_t seqLen) {
+  const unsigned char c0 = static_cast<unsigned char>(text[pos]);
+  if (seqLen == 1) {
+    return c0;
+  }
+
+  const unsigned char c1 = static_cast<unsigned char>(text[pos + 1]);
+  if (seqLen == 2) {
+    return (static_cast<uint32_t>(c0 & 0x1F) << 6) |
+           static_cast<uint32_t>(c1 & 0x3F);
+  }
+
+  const unsigned char c2 = static_cast<unsigned char>(text[pos + 2]);
+  if (seqLen == 3) {
+    return (static_cast<uint32_t>(c0 & 0x0F) << 12) |
+           (static_cast<uint32_t>(c1 & 0x3F) << 6) |
+           static_cast<uint32_t>(c2 & 0x3F);
+  }
+
+  const unsigned char c3 = static_cast<unsigned char>(text[pos + 3]);
+  return (static_cast<uint32_t>(c0 & 0x07) << 18) |
+         (static_cast<uint32_t>(c1 & 0x3F) << 12) |
+         (static_cast<uint32_t>(c2 & 0x3F) << 6) |
+         static_cast<uint32_t>(c3 & 0x3F);
+}
+
+bool TextProcessor::isWhitespaceCodepoint(uint32_t codepoint) {
+  return codepoint == 0x09 || codepoint == 0x0A || codepoint == 0x0D ||
+         codepoint == 0x20 || codepoint == 0x3000;
+}
+
+bool TextProcessor::isJapaneseCodepoint(uint32_t codepoint) {
+  return (codepoint >= 0x3040 && codepoint <= 0x309F) ||
+         (codepoint >= 0x30A0 && codepoint <= 0x30FF) ||
+         (codepoint >= 0x31F0 && codepoint <= 0x31FF) ||
+         (codepoint >= 0x3400 && codepoint <= 0x4DBF) ||
+         (codepoint >= 0x4E00 && codepoint <= 0x9FFF) ||
+         (codepoint >= 0x3000 && codepoint <= 0x303F) ||
+         (codepoint >= 0xFF66 && codepoint <= 0xFF9F);
 }
 
 } // namespace text
