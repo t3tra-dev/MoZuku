@@ -33,6 +33,25 @@ struct LocalByteRange {
   size_t endByte{0};
 };
 
+bool readBoolOption(const json &obj, const char *key, bool &out) {
+  if (!obj.contains(key)) {
+    return false;
+  }
+
+  const auto &value = obj[key];
+  if (value.is_boolean()) {
+    out = value.get<bool>();
+    return true;
+  }
+
+  if (value.is_number_integer()) {
+    out = value.get<int>() != 0;
+    return true;
+  }
+
+  return false;
+}
+
 bool isEscaped(const std::string &text, size_t pos) {
   size_t count = 0;
   while (pos > count && text[pos - count - 1] == '\\') {
@@ -411,6 +430,9 @@ json LSPServer::onInitialize(const json &id, const json &params) {
   // initializationOptionsから設定を抽出
   if (params.contains("initializationOptions")) {
     auto opts = params["initializationOptions"];
+    if (opts.contains("mozuku") && opts["mozuku"].is_object()) {
+      opts = opts["mozuku"];
+    }
 
     // MeCab設定
     if (opts.contains("mecab")) {
@@ -426,14 +448,8 @@ json LSPServer::onInitialize(const json &id, const json &params) {
     // 解析設定
     if (opts.contains("analysis")) {
       auto analysis = opts["analysis"];
-      if (analysis.contains("enableCaboCha") &&
-          analysis["enableCaboCha"].is_boolean()) {
-        config_.analysis.enableCaboCha = analysis["enableCaboCha"];
-      }
-      if (analysis.contains("grammarCheck") &&
-          analysis["grammarCheck"].is_boolean()) {
-        config_.analysis.grammarCheck = analysis["grammarCheck"];
-      }
+      readBoolOption(analysis, "enableCaboCha", config_.analysis.enableCaboCha);
+      readBoolOption(analysis, "grammarCheck", config_.analysis.grammarCheck);
       if (analysis.contains("minJapaneseRatio") &&
           analysis["minJapaneseRatio"].is_number()) {
         config_.analysis.minJapaneseRatio = analysis["minJapaneseRatio"];
@@ -446,63 +462,33 @@ json LSPServer::onInitialize(const json &id, const json &params) {
       // 警告レベル設定
       if (analysis.contains("warnings") && analysis["warnings"].is_object()) {
         auto warnings = analysis["warnings"];
-        if (warnings.contains("particleDuplicate") &&
-            warnings["particleDuplicate"].is_boolean()) {
-          config_.analysis.warnings.particleDuplicate =
-              warnings["particleDuplicate"];
-        }
-        if (warnings.contains("particleSequence") &&
-            warnings["particleSequence"].is_boolean()) {
-          config_.analysis.warnings.particleSequence =
-              warnings["particleSequence"];
-        }
-        if (warnings.contains("particleMismatch") &&
-            warnings["particleMismatch"].is_boolean()) {
-          config_.analysis.warnings.particleMismatch =
-              warnings["particleMismatch"];
-        }
-        if (warnings.contains("sentenceStructure") &&
-            warnings["sentenceStructure"].is_boolean()) {
-          config_.analysis.warnings.sentenceStructure =
-              warnings["sentenceStructure"];
-        }
-        if (warnings.contains("styleConsistency") &&
-            warnings["styleConsistency"].is_boolean()) {
-          config_.analysis.warnings.styleConsistency =
-              warnings["styleConsistency"];
-        }
-        if (warnings.contains("redundancy") &&
-            warnings["redundancy"].is_boolean()) {
-          config_.analysis.warnings.redundancy = warnings["redundancy"];
-        }
+        readBoolOption(warnings, "particleDuplicate",
+                       config_.analysis.warnings.particleDuplicate);
+        readBoolOption(warnings, "particleSequence",
+                       config_.analysis.warnings.particleSequence);
+        readBoolOption(warnings, "particleMismatch",
+                       config_.analysis.warnings.particleMismatch);
+        readBoolOption(warnings, "sentenceStructure",
+                       config_.analysis.warnings.sentenceStructure);
+        readBoolOption(warnings, "styleConsistency",
+                       config_.analysis.warnings.styleConsistency);
+        readBoolOption(warnings, "redundancy",
+                       config_.analysis.warnings.redundancy);
       }
 
       // ルールの有効/無効設定
       if (analysis.contains("rules") && analysis["rules"].is_object()) {
         auto rules = analysis["rules"];
-        if (rules.contains("commaLimit") && rules["commaLimit"].is_boolean()) {
-          config_.analysis.rules.commaLimit = rules["commaLimit"];
-        }
-        if (rules.contains("adversativeGa") &&
-            rules["adversativeGa"].is_boolean()) {
-          config_.analysis.rules.adversativeGa = rules["adversativeGa"];
-        }
-        if (rules.contains("duplicateParticleSurface") &&
-            rules["duplicateParticleSurface"].is_boolean()) {
-          config_.analysis.rules.duplicateParticleSurface =
-              rules["duplicateParticleSurface"];
-        }
-        if (rules.contains("adjacentParticles") &&
-            rules["adjacentParticles"].is_boolean()) {
-          config_.analysis.rules.adjacentParticles = rules["adjacentParticles"];
-        }
-        if (rules.contains("conjunctionRepeat") &&
-            rules["conjunctionRepeat"].is_boolean()) {
-          config_.analysis.rules.conjunctionRepeat = rules["conjunctionRepeat"];
-        }
-        if (rules.contains("raDropping") && rules["raDropping"].is_boolean()) {
-          config_.analysis.rules.raDropping = rules["raDropping"];
-        }
+        readBoolOption(rules, "commaLimit", config_.analysis.rules.commaLimit);
+        readBoolOption(rules, "adversativeGa",
+                       config_.analysis.rules.adversativeGa);
+        readBoolOption(rules, "duplicateParticleSurface",
+                       config_.analysis.rules.duplicateParticleSurface);
+        readBoolOption(rules, "adjacentParticles",
+                       config_.analysis.rules.adjacentParticles);
+        readBoolOption(rules, "conjunctionRepeat",
+                       config_.analysis.rules.conjunctionRepeat);
+        readBoolOption(rules, "raDropping", config_.analysis.rules.raDropping);
         if (rules.contains("commaLimitMax") &&
             rules["commaLimitMax"].is_number_integer()) {
           config_.analysis.rules.commaLimitMax = rules["commaLimitMax"];

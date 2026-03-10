@@ -23,9 +23,7 @@ static bool isDebugEnabled() {
   return debug;
 }
 
-Analyzer::Analyzer()
-    : mecab_manager_(std::make_unique<mecab::MeCabManager>(true)) {
-
+Analyzer::Analyzer() {
   if (isDebugEnabled()) {
     std::cerr << "[DEBUG] Analyzer created" << std::endl;
   }
@@ -35,6 +33,8 @@ Analyzer::~Analyzer() = default;
 
 bool Analyzer::initialize(const MoZukuConfig &config) {
   config_ = config;
+  mecab_manager_ =
+      std::make_unique<mecab::MeCabManager>(config.analysis.enableCaboCha);
 
   if (isDebugEnabled()) {
     std::cerr << "[DEBUG] Initializing analyzer with config" << std::endl;
@@ -73,6 +73,16 @@ std::vector<TokenData> Analyzer::analyzeText(const std::string &text) {
   }
 
   std::string cleanText = text::TextProcessor::sanitizeUTF8(text);
+  double japaneseRatio = text::TextProcessor::calculateJapaneseRatio(cleanText);
+  if (config_.analysis.minJapaneseRatio > 0.0 &&
+      japaneseRatio < config_.analysis.minJapaneseRatio) {
+    if (isDebugEnabled()) {
+      std::cerr << "[DEBUG] Skipping analysis due to low Japanese ratio: "
+                << japaneseRatio << " < " << config_.analysis.minJapaneseRatio
+                << std::endl;
+    }
+    return tokens;
+  }
 
   std::string systemText = encoding::utf8ToSystem(cleanText, system_charset_);
 
@@ -150,6 +160,18 @@ std::vector<Diagnostic> Analyzer::checkGrammar(const std::string &text) {
   std::vector<Diagnostic> diagnostics;
 
   if (!config_.analysis.grammarCheck) {
+    return diagnostics;
+  }
+
+  std::string cleanText = text::TextProcessor::sanitizeUTF8(text);
+  double japaneseRatio = text::TextProcessor::calculateJapaneseRatio(cleanText);
+  if (config_.analysis.minJapaneseRatio > 0.0 &&
+      japaneseRatio < config_.analysis.minJapaneseRatio) {
+    if (isDebugEnabled()) {
+      std::cerr << "[DEBUG] Skipping grammar check due to low Japanese ratio: "
+                << japaneseRatio << " < " << config_.analysis.minJapaneseRatio
+                << std::endl;
+    }
     return diagnostics;
   }
 
