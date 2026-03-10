@@ -54,8 +54,8 @@
       "properties": {
         "mozuku.serverPath": {
           "type": "string",
-          "default": "./bin/mozuku-lsp",
-          "description": "Path to the MoZuku LSP server binary (relative to extension root)"
+          "default": "mozuku-lsp",
+          "description": "Command or path to the MoZuku LSP server binary. If not found directly, PATH and standard install locations are searched."
         },
         "mozuku.mecab.dicdir": {
           "type": "string",

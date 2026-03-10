@@ -131,9 +131,94 @@ function! s:capitalize(word) abort
   return toupper(strpart(a:word, 0, 1)) . strpart(a:word, 1)
 endfunction
 
+function! s:path_has_sep(path) abort
+  return a:path =~# '[/\\]'
+endfunction
+
+function! s:is_windows() abort
+  return has('win32') || has('win64')
+endfunction
+
+function! s:exe_name(command_name) abort
+  if s:is_windows() && a:command_name !~? '\.exe$'
+    return a:command_name . '.exe'
+  endif
+  return a:command_name
+endfunction
+
+function! s:add_unique(list, value) abort
+  if empty(a:value)
+    return
+  endif
+  if index(a:list, a:value) < 0
+    call add(a:list, a:value)
+  endif
+endfunction
+
+function! s:repo_root() abort
+  return fnamemodify(expand('<sfile>:p'), ':h:h:h')
+endfunction
+
+function! s:resolve_explicit_path(path_value) abort
+  if empty(a:path_value)
+    return ''
+  endif
+  return fnamemodify(a:path_value, ':p')
+endfunction
+
+function! s:command_candidates(command_name) abort
+  let l:candidates = []
+  if empty(a:command_name)
+    return l:candidates
+  endif
+
+  let l:exe = s:exe_name(a:command_name)
+
+  for l:name in [a:command_name, l:exe]
+    let l:resolved = exepath(l:name)
+    if !empty(l:resolved)
+      call s:add_unique(l:candidates, l:resolved)
+    endif
+  endfor
+
+  if exists('$HOME')
+    call s:add_unique(l:candidates, expand('~/.local/bin/' . l:exe))
+    call s:add_unique(l:candidates, expand('~/bin/' . l:exe))
+  endif
+
+  if has('macunix')
+    for l:dir in ['/usr/local/bin', '/usr/bin', '/opt/homebrew/bin', '/opt/local/bin']
+      call s:add_unique(l:candidates, l:dir . '/' . l:exe)
+    endfor
+  elseif has('unix')
+    for l:dir in ['/usr/local/bin', '/usr/bin']
+      call s:add_unique(l:candidates, l:dir . '/' . l:exe)
+    endfor
+  endif
+
+  if s:is_windows()
+    for l:base in [expand('$LOCALAPPDATA'), expand('$ProgramFiles'), expand('$ProgramFiles(x86)')]
+      if empty(l:base)
+        continue
+      endif
+      for l:name in ['MoZuku', 'mozuku-lsp']
+        call s:add_unique(l:candidates, l:base . '/' . l:name . '/bin/' . l:exe)
+      endfor
+    endfor
+  endif
+
+  let l:repo_root = s:repo_root()
+  call s:add_unique(l:candidates, l:repo_root . '/build/install/bin/' . l:exe)
+  call s:add_unique(l:candidates, l:repo_root . '/build/' . l:exe)
+  call s:add_unique(l:candidates, l:repo_root . '/mozuku-lsp/build/install/bin/' . l:exe)
+  call s:add_unique(l:candidates, l:repo_root . '/mozuku-lsp/build/' . l:exe)
+
+  return l:candidates
+endfunction
+
 function! mozuku#config() abort
   return {
-        \ 'server_path': g:mozuku_server_path,
+        \ 'server_path': mozuku#server_cmd(),
         \ 'init_options': mozuku#build_init_options(),
         \ }
 endfunction
@@ -261,9 +346,37 @@ endfunction
 
 function! mozuku#server_cmd() abort
   if type(g:mozuku_server_path) == v:t_list
-    return g:mozuku_server_path
+    return copy(g:mozuku_server_path)
   endif
-  return [g:mozuku_server_path]
+
+  let l:configured = trim(g:mozuku_server_path)
+  if !empty(l:configured) && s:path_has_sep(l:configured)
+    return [s:resolve_explicit_path(l:configured)]
+  endif
+
+  let l:env = exists('$MOZUKU_LSP') ? trim($MOZUKU_LSP) : ''
+  if !empty(l:env) && s:path_has_sep(l:env)
+    return [s:resolve_explicit_path(l:env)]
+  endif
+
+  for l:command_name in [l:configured, l:env, 'mozuku-lsp']
+    if empty(l:command_name)
+      continue
+    endif
+    for l:candidate in s:command_candidates(l:command_name)
+      if executable(l:candidate)
+        return [fnamemodify(l:candidate, ':p')]
+      endif
+    endfor
+  endfor
+
+  if !empty(l:configured)
+    return [l:configured]
+  endif
+  if !empty(l:env)
+    return [l:env]
+  endif
+  return ['mozuku-lsp']
 endfunction
 
 function! mozuku#vim_on_comment(server, payload) abort
