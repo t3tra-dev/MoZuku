@@ -5,6 +5,8 @@ if(POLICY CMP0177)
   cmake_policy(SET CMP0177 NEW)
 endif()
 
+include(GNUInstallDirs)
+
 set(CMAKE_CXX_STANDARD 17)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -178,21 +180,8 @@ message(STATUS "  MeCab: ${MECAB_FOUND}")
 message(STATUS "  CaboCha: ${CABOCHA_FOUND}")
 message(STATUS "  CURL: ${CURL_FOUND}")
 
-set(VSCODE_EXTENSION_DIR "${CMAKE_SOURCE_DIR}/../vscode-mozuku")
-
 install(TARGETS mozuku-lsp
-    RUNTIME DESTINATION "${VSCODE_EXTENSION_DIR}/bin"
-)
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 
-install(TARGETS mozuku-lsp
-        RUNTIME DESTINATION bin)
-
-
-add_custom_target(package-extension
-    COMMAND ${CMAKE_COMMAND} --build . --target install
-    COMMENT "VS Code拡張をLSPサーバーと共にパッケージ化中 (システムライブラリが必要) "
-    DEPENDS mozuku-lsp
-)
-
-message(STATUS "VS Code拡張のパッケージ先: ${VSCODE_EXTENSION_DIR}")
+message(STATUS "mozuku-lsp は 'cmake --install' で ${CMAKE_INSTALL_BINDIR} にインストールされます")
 message(STATUS "注意: ターゲットシステムにMeCab/CaboCha/CURLライブラリのインストールが必要です")

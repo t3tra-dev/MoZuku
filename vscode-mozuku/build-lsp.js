@@ -2,7 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { execSync } = require("child_process");
+const { execFileSync } = require("child_process");
 
 const isWindows = process.platform === "win32";
 const isLinux = process.platform === "linux";
@@ -43,39 +43,36 @@ function ensureDir(dirPath) {
   }
 }
 
-function buildMoZuKuBinary(lspSourceDir) {
+function runCMake(args, cwd) {
+  execFileSync("cmake", args, {
+    stdio: "inherit",
+    cwd,
+  });
+}
+
+function buildMoZuKuBinary(lspSourceDir, installPrefix) {
   log("Building LSP server...");
 
   try {
-    // Change to LSP source directory
-    process.chdir(lspSourceDir);
-
-    // Configure and build
-    if (!fs.existsSync("build")) {
+    if (!fs.existsSync(path.join(lspSourceDir, "build"))) {
       log("Creating build directory...");
-      fs.mkdirSync("build");
+      fs.mkdirSync(path.join(lspSourceDir, "build"), { recursive: true });
     }
 
-    // Configure CMake
     log("Configuring with CMake...");
-    execSync("cmake -B build -DCMAKE_BUILD_TYPE=Release", {
-      stdio: "inherit",
-      cwd: lspSourceDir,
-    });
+    runCMake(["-B", "build", "-DCMAKE_BUILD_TYPE=Release"], lspSourceDir);
 
-    // Build the project
     log("Building with CMake...");
-    execSync("cmake --build build -j 4", {
-      stdio: "inherit",
-      cwd: lspSourceDir,
-    });
+    runCMake(
+      ["--build", "build", "--config", "Release", "--parallel", "4"],
+      lspSourceDir,
+    );
 
-    // Package extension using CMake install target
-    log("Packaging extension with CMake install target...");
-    execSync("cmake --build build --target package-extension", {
-      stdio: "inherit",
-      cwd: lspSourceDir,
-    });
+    log(`Installing with CMake into: ${installPrefix}`);
+    runCMake(
+      ["--install", "build", "--config", "Release", "--prefix", installPrefix],
+      lspSourceDir,
+    );
   } catch (error) {
     log(`Build failed: ${error.message}`);
     throw error;
@@ -107,6 +104,7 @@ function buildForCurrentPlatform() {
 
   const lspSourceDir = path.join(__dirname, "..", "mozuku-lsp");
   const binDir = path.join(__dirname, "bin");
+  const installPrefix = __dirname;
 
   // Clean previous build
   if (fs.existsSync(binDir)) {
@@ -119,32 +117,21 @@ function buildForCurrentPlatform() {
 
   // Nixによるビルド成果物がない場合はビルドを行う
   if (fs.existsSync(path.join(__dirname, "..", "result", "bin"))) {
-
+    const exeName =
+      currentTarget.platform === "win32" ? "mozuku-lsp.exe" : "mozuku-lsp";
+    const nixExecutable = path.join(__dirname, "..", "result", "bin", exeName);
+    const targetExecutable = path.join(binDir, exeName);
+    log(`Copying Nix executable: ${nixExecutable} -> ${targetExecutable}`);
+    fs.copyFileSync(nixExecutable, targetExecutable);
   } else {
-    buildMoZuKuBinary(lspSourceDir)
+    buildMoZuKuBinary(lspSourceDir, installPrefix);
   }
 
-  // Copy the built executable
-  const exeName = currentTarget.platform === "win32"
-    ? "mozuku-lsp.exe"
-    : "mozuku-lsp";
-  const builtExecutable = path.join(lspSourceDir, "build", exeName);
+  const exeName =
+    currentTarget.platform === "win32" ? "mozuku-lsp.exe" : "mozuku-lsp";
   const targetExecutable = path.join(binDir, exeName);
-
-  if (!fs.existsSync(builtExecutable)) {
-    // Try alternative build location
-    const altExecutable = path.join(lspSourceDir, exeName);
-    if (fs.existsSync(altExecutable)) {
-      log(`Copying executable from alternative location: ${altExecutable}`);
-      fs.copyFileSync(altExecutable, targetExecutable);
-    } else {
-      throw new Error(
-        `Built executable not found at: ${builtExecutable} or ${altExecutable}`,
-      );
-    }
-  } else {
-    log(`Copying executable: ${builtExecutable} -> ${targetExecutable}`);
-    fs.copyFileSync(builtExecutable, targetExecutable);
+  if (!fs.existsSync(targetExecutable)) {
+    throw new Error(`Installed executable not found at: ${targetExecutable}`);
   }
 
   // Make executable on Unix-like systems
