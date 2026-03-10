@@ -206,7 +206,7 @@
 
           nativePackages = mkPackagesFor pkgs;
 
-          mkMoZuKuLSP =
+          mkMoZukuLSP =
             crossTarget:
             let
               crossPkgs = pkgs.pkgsCross.${crossTarget};
@@ -221,7 +221,7 @@
           // builtins.listToAttrs (
             map (target: {
               name = "mozuku-lsp-${target}";
-              value = mkMoZuKuLSP target;
+              value = mkMoZukuLSP target;
             }) crossTargets
           );
         };

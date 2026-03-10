@@ -50,7 +50,7 @@ function runCMake(args, cwd) {
   });
 }
 
-function buildMoZuKuBinary(lspSourceDir, installPrefix) {
+function buildMoZukuBinary(lspSourceDir, installPrefix) {
   log("Building LSP server...");
 
   try {
@@ -124,7 +124,7 @@ function buildForCurrentPlatform() {
     log(`Copying Nix executable: ${nixExecutable} -> ${targetExecutable}`);
     fs.copyFileSync(nixExecutable, targetExecutable);
   } else {
-    buildMoZuKuBinary(lspSourceDir, installPrefix);
+    buildMoZukuBinary(lspSourceDir, installPrefix);
   }
 
   const exeName =
