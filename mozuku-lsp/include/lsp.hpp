@@ -63,6 +63,7 @@ private:
   json onSemanticTokensFull(const json &id, const json &params);
   json onSemanticTokensRange(const json &id, const json &params);
   json onHover(const json &id, const json &params);
+  json onSelectionRange(const json &id, const json &params);
 
   DocumentState &ensureDocument(const std::string &uri);
   DocumentState *findDocument(const std::string &uri);
