@@ -126,6 +126,9 @@ set(MOZUKU_SOURCES
   src/grammar_checker.cpp
   src/wikipedia.cpp
   src/comment_extractor.cpp
+  src/document_preprocessor.cpp
+  src/presenter.cpp
+  src/tree_sitter_document.cpp
 )
 
 add_executable(mozuku-lsp ${MOZUKU_SOURCES})

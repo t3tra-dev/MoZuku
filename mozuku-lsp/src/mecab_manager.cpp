@@ -1,6 +1,6 @@
 #include "mecab_manager.hpp"
+#include "mozuku/core/debug.hpp"
 #include <cabocha.h>
-#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <mecab.h>
@@ -14,22 +14,12 @@
 namespace MoZuku {
 namespace mecab {
 
-static bool isDebugEnabled() {
-  static bool initialized = false;
-  static bool debug = false;
-  if (!initialized) {
-    debug = (std::getenv("MOZUKU_DEBUG") != nullptr);
-    initialized = true;
-  }
-  return debug;
-}
-
 MeCabManager::MeCabManager(bool enableCaboCha)
     : mecab_tagger_(nullptr), cabocha_parser_(nullptr),
       system_charset_("UTF-8"), cabocha_available_(false),
       enable_cabocha_(enableCaboCha) {
 
-  if (isDebugEnabled()) {
+  if (debug::isEnabled()) {
     std::cerr << "[DEBUG] MeCabManager created with CaboCha "
               << (enableCaboCha ? "enabled" : "disabled") << std::endl;
   }
@@ -50,7 +40,7 @@ bool MeCabManager::initialize(const std::string &mecabDicPath,
                               const std::string &mecabCharset) {
   SystemLibInfo systemMeCab = detectSystemMeCab();
   if (!systemMeCab.isAvailable) {
-    if (isDebugEnabled()) {
+    if (debug::isEnabled()) {
       std::cerr << "[ERROR] System MeCab not detected" << std::endl;
     }
     return false;
@@ -67,13 +57,13 @@ bool MeCabManager::initialize(const std::string &mecabDicPath,
     mecab_args = "-d " + mecabDicPath;
   } else if (!systemMeCab.dicPath.empty()) {
     mecab_args = "-d " + systemMeCab.dicPath + "/ipadic";
-    if (isDebugEnabled()) {
+    if (debug::isEnabled()) {
       std::cerr << "[DEBUG] Using detected MeCab dicdir: "
                 << systemMeCab.dicPath << "/ipadic" << std::endl;
     }
   }
 
-  if (isDebugEnabled() && !mecab_args.empty()) {
+  if (debug::isEnabled() && !mecab_args.empty()) {
     std::cerr << "[DEBUG] MeCab args: " << mecab_args << std::endl;
   }
 
@@ -81,13 +71,13 @@ bool MeCabManager::initialize(const std::string &mecabDicPath,
   if (!mecab_tagger_) {
     std::string error = MeCab::getTaggerError() ? MeCab::getTaggerError()
                                                 : "Unknown MeCab error";
-    if (isDebugEnabled()) {
+    if (debug::isEnabled()) {
       std::cerr << "[ERROR] MeCab initialization failed with args '"
                 << mecab_args << "': " << error << std::endl;
     }
 
     if (!mecab_args.empty()) {
-      if (isDebugEnabled()) {
+      if (debug::isEnabled()) {
         std::cerr << "[DEBUG] Trying MeCab without explicit dictionary path..."
                   << std::endl;
       }
@@ -95,7 +85,7 @@ bool MeCabManager::initialize(const std::string &mecabDicPath,
       if (!mecab_tagger_) {
         error = MeCab::getTaggerError() ? MeCab::getTaggerError()
                                         : "Unknown MeCab error";
-        if (isDebugEnabled()) {
+        if (debug::isEnabled()) {
           std::cerr << "[ERROR] MeCab fallback initialization also failed: "
                     << error << std::endl;
         }
@@ -108,7 +98,7 @@ bool MeCabManager::initialize(const std::string &mecabDicPath,
 
   system_charset_ = testMeCabCharset(mecab_tagger_, system_charset_);
 
-  if (isDebugEnabled()) {
+  if (debug::isEnabled()) {
     std::cerr << "[DEBUG] MeCab successfully initialized with charset: "
               << system_charset_ << std::endl;
   }
@@ -119,22 +109,22 @@ bool MeCabManager::initialize(const std::string &mecabDicPath,
       cabocha_parser_ = cabocha_new2("");
       if (cabocha_parser_) {
         cabocha_available_ = true;
-        if (isDebugEnabled()) {
+        if (debug::isEnabled()) {
           std::cerr << "[DEBUG] CaboCha successfully initialized" << std::endl;
         }
       } else {
         const char *error = cabocha_strerror(nullptr);
-        if (isDebugEnabled()) {
+        if (debug::isEnabled()) {
           std::cerr << "[DEBUG] CaboCha initialization failed: "
                     << (error ? error : "Unknown error") << std::endl;
         }
       }
-    } else if (isDebugEnabled()) {
+    } else if (debug::isEnabled()) {
       std::cerr << "[DEBUG] CaboCha not available on system" << std::endl;
     }
   }
 
-  if (isDebugEnabled()) {
+  if (debug::isEnabled()) {
     std::cerr << "[DEBUG] MeCabManager initialized - MeCab: "
               << (mecab_tagger_ ? "OK" : "FAIL")
               << ", CaboCha: " << (cabocha_available_ ? "OK" : "N/A")
@@ -147,7 +137,7 @@ bool MeCabManager::initialize(const std::string &mecabDicPath,
 SystemLibInfo MeCabManager::detectSystemMeCab() {
   SystemLibInfo info;
 
-  if (isDebugEnabled()) {
+  if (debug::isEnabled()) {
     std::cerr << "[DEBUG] Detecting system MeCab installation..." << std::endl;
   }
 
@@ -164,7 +154,7 @@ SystemLibInfo MeCabManager::detectSystemMeCab() {
       }
       info.dicPath = dicdir;
 
-      if (isDebugEnabled()) {
+      if (debug::isEnabled()) {
         std::cerr << "[DEBUG] mecab-config --dicdir: " << dicdir << std::endl;
       }
     }
@@ -187,7 +177,7 @@ SystemLibInfo MeCabManager::detectSystemMeCab() {
             charset.erase(charset.find_last_not_of(" \t") + 1);
             info.charset = charset;
 
-            if (isDebugEnabled()) {
+            if (debug::isEnabled()) {
               std::cerr << "[DEBUG] Found charset in dicrc: " << charset
                         << std::endl;
             }
@@ -200,12 +190,12 @@ SystemLibInfo MeCabManager::detectSystemMeCab() {
 
   if (info.charset.empty()) {
     info.charset = "UTF-8";
-    if (isDebugEnabled()) {
+    if (debug::isEnabled()) {
       std::cerr << "[DEBUG] Using default charset: UTF-8" << std::endl;
     }
   } else if (info.charset != "UTF-8") {
     // Test if MeCab actually works with UTF-8 despite dicrc settings
-    if (isDebugEnabled()) {
+    if (debug::isEnabled()) {
       std::cerr << "[DEBUG] dicrc says charset: " << info.charset
                 << ", testing actual behavior..." << std::endl;
     }
@@ -228,7 +218,7 @@ SystemLibInfo MeCabManager::detectSystemMeCab() {
         if (surface == testUtf8 &&
             surface.size() == 6) { // "誤解" is 6 bytes in UTF-8
           utf8Works = true;
-          if (isDebugEnabled()) {
+          if (debug::isEnabled()) {
             std::cerr << "[DEBUG] MeCab actually works with UTF-8 input, "
                          "overriding dicrc charset from "
                       << info.charset << " to UTF-8" << std::endl;
@@ -246,7 +236,7 @@ SystemLibInfo MeCabManager::detectSystemMeCab() {
 
   info.isAvailable = !info.dicPath.empty();
 
-  if (isDebugEnabled()) {
+  if (debug::isEnabled()) {
     std::cerr << "[DEBUG] System MeCab detection result - Available: "
               << (info.isAvailable ? "yes" : "no")
               << ", DicPath: " << info.dicPath << ", Charset: " << info.charset
@@ -259,7 +249,7 @@ SystemLibInfo MeCabManager::detectSystemMeCab() {
 SystemLibInfo MeCabManager::detectSystemCaboCha() {
   SystemLibInfo info;
 
-  if (isDebugEnabled()) {
+  if (debug::isEnabled()) {
     std::cerr << "[DEBUG] Detecting system CaboCha installation..."
               << std::endl;
   }
@@ -271,7 +261,7 @@ SystemLibInfo MeCabManager::detectSystemCaboCha() {
     char buffer[256];
     if (fgets(buffer, sizeof(buffer), pipe)) {
       info.isAvailable = true;
-      if (isDebugEnabled()) {
+      if (debug::isEnabled()) {
         std::cerr << "[DEBUG] cabocha-config found, system CaboCha available"
                   << std::endl;
       }
@@ -282,7 +272,7 @@ SystemLibInfo MeCabManager::detectSystemCaboCha() {
   SystemLibInfo mecabInfo = detectSystemMeCab();
   info.charset = mecabInfo.charset;
 
-  if (isDebugEnabled()) {
+  if (debug::isEnabled()) {
     std::cerr << "[DEBUG] System CaboCha detection result - Available: "
               << (info.isAvailable ? "yes" : "no")
               << ", Charset: " << info.charset << std::endl;
@@ -310,7 +300,7 @@ std::string MeCabManager::testMeCabCharset(MeCab::Tagger *tagger,
 
     // If we get back the same UTF-8 text, MeCab is working in UTF-8 mode
     if (surface == testUtf8 && surface.size() == 6) {
-      if (isDebugEnabled()) {
+      if (debug::isEnabled()) {
         std::cerr << "[DEBUG] MeCab accepts UTF-8 input directly, using UTF-8"
                   << std::endl;
       }
@@ -318,7 +308,7 @@ std::string MeCabManager::testMeCabCharset(MeCab::Tagger *tagger,
     }
   }
 
-  if (isDebugEnabled()) {
+  if (debug::isEnabled()) {
     std::cerr << "[DEBUG] MeCab requires " << originalCharset << " encoding"
               << std::endl;
   }

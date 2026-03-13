@@ -1,7 +1,7 @@
 #pragma once
 
-#include "analyzer.hpp"
-#include "lsp.hpp"
+#include "mozuku/core/config.hpp"
+#include "mozuku/core/types.hpp"
 #include <string>
 #include <vector>
 

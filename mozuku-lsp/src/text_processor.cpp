@@ -1,85 +1,28 @@
 #include "text_processor.hpp"
+#include "encoding_utils.hpp"
+#include "mozuku/core/debug.hpp"
 #include <algorithm>
-#include <cstdlib>
 #include <iostream>
+#include <vector>
+#include <cstdint>
 
 namespace MoZuku {
 namespace text {
 
-static bool isDebugEnabled() {
-  static bool initialized = false;
-  static bool debug = false;
-  if (!initialized) {
-    debug = (std::getenv("MOZUKU_DEBUG") != nullptr);
-    initialized = true;
-  }
-  return debug;
-}
-
 std::string TextProcessor::sanitizeUTF8(const std::string &input) {
-  if (input.empty())
-    return input;
-
-  std::string result;
-  result.reserve(input.size());
-
-  for (size_t i = 0; i < input.size(); ++i) {
-    unsigned char c = static_cast<unsigned char>(input[i]);
-
-    // ASCII characters (0x00-0x7F) are safe
-    if (c < 0x80) {
-      // Skip control characters except tab, newline, carriage return
-      if (c >= 0x20 || c == 0x09 || c == 0x0A || c == 0x0D) {
-        result += static_cast<char>(c);
-      }
-      continue;
-    }
-
-    // Handle multi-byte UTF-8 sequences
-    size_t seqLen = 0;
-    if ((c & 0xE0) == 0xC0)
-      seqLen = 2; // 110xxxxx (2-byte)
-    else if ((c & 0xF0) == 0xE0)
-      seqLen = 3; // 1110xxxx (3-byte)
-    else if ((c & 0xF8) == 0xF0)
-      seqLen = 4; // 11110xxx (4-byte)
-    else {
-      // Invalid UTF-8 start byte, skip it
-      continue;
-    }
-
-    // Check if we have enough bytes for the sequence
-    if (i + seqLen > input.size()) {
-      break; // Incomplete sequence at end of string
-    }
-
-    // Validate all continuation bytes
-    if (isValidUtf8Sequence(input, i, seqLen)) {
-      // Valid sequence, copy it
-      for (size_t j = 0; j < seqLen; ++j) {
-        result += input[i + j];
-      }
-      i += seqLen - 1; // -1 because loop will increment i
-    } else {
-      // Invalid sequence, skip start byte (continuation bytes will be handled
-      // in next iterations)
-      continue;
-    }
-  }
-
-  return result;
+  return encoding::sanitizeUtf8(input);
 }
 
 std::vector<SentenceBoundary>
 TextProcessor::splitIntoSentences(const std::string &text) {
-  if (isDebugEnabled()) {
+  if (debug::isEnabled()) {
     std::cerr << "[DEBUG] splitIntoSentences called with text length: "
               << text.size() << std::endl;
   }
 
   std::vector<SentenceBoundary> sentences;
   if (text.empty()) {
-    if (isDebugEnabled()) {
+    if (debug::isEnabled()) {
       std::cerr << "[DEBUG] Empty text, returning empty sentences" << std::endl;
     }
     return sentences;
@@ -158,7 +101,7 @@ TextProcessor::splitIntoSentences(const std::string &text) {
         sentence.text = sentence.text.substr(textStart, textEnd - textStart);
         sentences.push_back(sentence);
 
-        if (isDebugEnabled()) {
+        if (debug::isEnabled()) {
           std::cerr << "[DEBUG] Created sentence " << sentenceId - 1
                     << ": length=" << sentence.text.size()
                     << ", start=" << sentence.start << ", end=" << sentence.end
@@ -178,7 +121,7 @@ TextProcessor::splitIntoSentences(const std::string &text) {
     }
   }
 
-  if (isDebugEnabled()) {
+  if (debug::isEnabled()) {
     std::cerr << "[DEBUG] splitIntoSentences completed: created "
               << sentences.size() << " sentences" << std::endl;
   }

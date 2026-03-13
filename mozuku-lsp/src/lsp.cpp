@@ -1,37 +1,22 @@
 #include "lsp.hpp"
 #include "analyzer.hpp"
 #include "comment_extractor.hpp"
+#include "mozuku/core/debug.hpp"
+#include "pos_analyzer.hpp"
 #include "utf16.hpp"
 #include "wikipedia.hpp"
 
 #include <algorithm>
-#include <cctype>
+#include <cstdlib>
 #include <iostream>
 #include <set>
 #include <sstream>
 #include <string>
 #include <thread>
 
-#include <tree_sitter/api.h>
-
 using nlohmann::json;
 
-static bool isDebugEnabled() {
-  static bool initialized = false;
-  static bool debug = false;
-  if (!initialized) {
-    debug = (std::getenv("MOZUKU_DEBUG") != nullptr);
-    initialized = true;
-  }
-  return debug;
-}
-
 namespace {
-
-struct LocalByteRange {
-  size_t startByte{0};
-  size_t endByte{0};
-};
 
 bool readBoolOption(const json &obj, const char *key, bool &out) {
   if (!obj.contains(key)) {
@@ -50,277 +35,6 @@ bool readBoolOption(const json &obj, const char *key, bool &out) {
   }
 
   return false;
-}
-
-bool isEscaped(const std::string &text, size_t pos) {
-  size_t count = 0;
-  while (pos > count && text[pos - count - 1] == '\\') {
-    ++count;
-  }
-  return (count % 2) == 1;
-}
-
-size_t findClosingDollar(const std::string &text, size_t pos) {
-  for (size_t i = pos; i < text.size(); ++i) {
-    if (text[i] == '$' && !isEscaped(text, i)) {
-      return i;
-    }
-  }
-  return std::string::npos;
-}
-
-size_t findClosingDoubleDollar(const std::string &text, size_t pos) {
-  for (size_t i = pos; i + 1 < text.size(); ++i) {
-    if (text[i] == '$' && text[i + 1] == '$' && !isEscaped(text, i)) {
-      return i;
-    }
-  }
-  return std::string::npos;
-}
-
-size_t findClosingCommand(const std::string &text, size_t pos,
-                          const std::string &closing) {
-  size_t current = pos;
-  while (current < text.size()) {
-    size_t found = text.find(closing, current);
-    if (found == std::string::npos)
-      return std::string::npos;
-    if (!isEscaped(text, found))
-      return found;
-    current = found + closing.size();
-  }
-  return std::string::npos;
-}
-
-std::string processLatexMath(const std::string &text) { return text; }
-
-std::string sanitizeLatexCommentText(const std::string &raw) {
-  if (raw.empty())
-    return raw;
-
-  std::string sanitized = raw;
-  sanitized[0] = ' ';
-  size_t idx = 1;
-  while (idx < sanitized.size() && sanitized[idx] == '%') {
-    sanitized[idx] = ' ';
-    ++idx;
-  }
-  while (idx < sanitized.size() &&
-         (sanitized[idx] == ' ' || sanitized[idx] == '\t')) {
-    sanitized[idx] = ' ';
-    ++idx;
-  }
-  return sanitized;
-}
-
-std::vector<MoZuku::comments::CommentSegment>
-collectLatexComments(const std::string &text) {
-  std::vector<MoZuku::comments::CommentSegment> segments;
-  size_t pos = 0;
-  while (pos < text.size()) {
-    size_t lineStart = pos;
-    size_t lineEnd = text.find('\n', pos);
-    if (lineEnd == std::string::npos)
-      lineEnd = text.size();
-
-    size_t current = lineStart;
-    bool found = false;
-    while (current < lineEnd) {
-      if (text[current] == '%' && !isEscaped(text, current)) {
-        found = true;
-        break;
-      }
-      ++current;
-    }
-
-    if (found) {
-      MoZuku::comments::CommentSegment segment;
-      segment.startByte = current;
-      segment.endByte = lineEnd;
-      segment.sanitized =
-          sanitizeLatexCommentText(text.substr(current, lineEnd - current));
-      segments.push_back(std::move(segment));
-    }
-
-    if (lineEnd >= text.size())
-      break;
-    pos = lineEnd + 1;
-  }
-
-  return segments;
-}
-
-size_t utf8CharLen(unsigned char c) {
-  if (c < 0x80)
-    return 1;
-  if ((c >> 5) == 0x6)
-    return 2;
-  if ((c >> 4) == 0xE)
-    return 3;
-  if ((c >> 3) == 0x1E)
-    return 4;
-  return 1;
-}
-
-std::vector<LocalByteRange> collectHtmlContentRanges(const std::string &text) {
-  std::vector<LocalByteRange> ranges;
-  const TSLanguage *language = MoZuku::comments::resolveLanguage("html");
-  if (!language)
-    return ranges;
-
-  TSParser *parser = ts_parser_new();
-  if (!parser)
-    return ranges;
-
-  std::unique_ptr<TSParser, decltype(&ts_parser_delete)> parserGuard(
-      parser, &ts_parser_delete);
-  if (!ts_parser_set_language(parser, language)) {
-    return ranges;
-  }
-
-  TSTree *tree =
-      ts_parser_parse_string(parser, nullptr, text.c_str(), text.size());
-  if (!tree)
-    return ranges;
-
-  std::unique_ptr<TSTree, decltype(&ts_tree_delete)> treeGuard(tree,
-                                                               &ts_tree_delete);
-
-  TSNode root = ts_tree_root_node(tree);
-  if (ts_node_is_null(root))
-    return ranges;
-
-  std::vector<TSNode> stack;
-  stack.push_back(root);
-
-  while (!stack.empty()) {
-    TSNode node = stack.back();
-    stack.pop_back();
-
-    if (ts_node_is_null(node))
-      continue;
-
-    const char *type = ts_node_type(node);
-    if (type && std::strcmp(type, "text") == 0) {
-      size_t start = ts_node_start_byte(node);
-      size_t end = ts_node_end_byte(node);
-      if (start >= end || end > text.size())
-        continue;
-
-      size_t trimmedStart = start;
-      while (trimmedStart < end &&
-             std::isspace(static_cast<unsigned char>(text[trimmedStart]))) {
-        ++trimmedStart;
-      }
-      size_t trimmedEnd = end;
-      while (trimmedEnd > trimmedStart &&
-             std::isspace(static_cast<unsigned char>(text[trimmedEnd - 1]))) {
-        --trimmedEnd;
-      }
-      if (trimmedEnd > trimmedStart) {
-        ranges.push_back({trimmedStart, trimmedEnd});
-      }
-      continue;
-    }
-
-    uint32_t childCount = ts_node_child_count(node);
-    for (uint32_t i = 0; i < childCount; ++i) {
-      TSNode child = ts_node_child(node, i);
-      if (!ts_node_is_null(child)) {
-        stack.push_back(child);
-      }
-    }
-  }
-
-  return ranges;
-}
-
-std::vector<LocalByteRange> collectLatexContentRanges(const std::string &text) {
-  std::vector<LocalByteRange> ranges;
-  size_t i = 0;
-  while (i < text.size()) {
-    unsigned char c = static_cast<unsigned char>(text[i]);
-    if (c == '%' && !isEscaped(text, i)) {
-      size_t lineEnd = text.find('\n', i);
-      if (lineEnd == std::string::npos)
-        break;
-      i = lineEnd + 1;
-      continue;
-    }
-    if (c == '$' && !isEscaped(text, i)) {
-      if (i + 1 < text.size() && text[i + 1] == '$') {
-        size_t closing = findClosingDoubleDollar(text, i + 2);
-        if (closing == std::string::npos)
-          break;
-        i = closing + 2;
-        continue;
-      } else {
-        size_t closing = findClosingDollar(text, i + 1);
-        if (closing == std::string::npos)
-          break;
-        i = closing + 1;
-        continue;
-      }
-    }
-    if (c == '\\') {
-      ++i;
-      while (i < text.size()) {
-        unsigned char ch = static_cast<unsigned char>(text[i]);
-        if (!std::isalpha(ch) && ch != '@')
-          break;
-        ++i;
-      }
-      if (i < text.size() && text[i] == '*')
-        ++i;
-      continue;
-    }
-    if (c == '{' || c == '}') {
-      ++i;
-      continue;
-    }
-    if (std::isspace(c)) {
-      ++i;
-      continue;
-    }
-
-    size_t start = i;
-    bool advanced = false;
-    while (i < text.size()) {
-      unsigned char d = static_cast<unsigned char>(text[i]);
-      if (d == '\\' || d == '$' || d == '{' || d == '}' ||
-          (d == '%' && !isEscaped(text, i))) {
-        break;
-      }
-      if (d < 0x80) {
-        if (std::isspace(d) || std::ispunct(d))
-          break;
-      }
-      size_t len = utf8CharLen(d);
-      i += len;
-      advanced = true;
-    }
-    if (advanced) {
-      ranges.push_back({start, i});
-      continue;
-    }
-    // ensure progress to avoid infinite loop
-    if (!advanced)
-      ++i;
-  }
-
-  return ranges;
-}
-
-std::vector<LocalByteRange>
-collectContentHighlightRanges(const std::string &languageId,
-                              const std::string &text) {
-  if (languageId == "html") {
-    return collectHtmlContentRanges(text);
-  }
-  if (languageId == "latex") {
-    return collectLatexContentRanges(text);
-  }
-  return {};
 }
 
 } // namespace
@@ -419,7 +133,7 @@ void LSPServer::run() {
       json req = json::parse(jsonPayload);
       handle(req);
     } catch (const json::parse_error &e) {
-      if (isDebugEnabled()) {
+      if (MoZuku::debug::isEnabled()) {
         std::cerr << "[DEBUG] JSON parse error: " << e.what() << std::endl;
       }
     }
@@ -537,22 +251,48 @@ void LSPServer::onInitialized() {
   // 初期化完了
 }
 
+LSPServer::DocumentState &LSPServer::ensureDocument(const std::string &uri) {
+  return documents_[uri];
+}
+
+LSPServer::DocumentState *LSPServer::findDocument(const std::string &uri) {
+  auto it = documents_.find(uri);
+  return it == documents_.end() ? nullptr : &it->second;
+}
+
+const LSPServer::DocumentState *
+LSPServer::findDocument(const std::string &uri) const {
+  auto it = documents_.find(uri);
+  return it == documents_.end() ? nullptr : &it->second;
+}
+
+bool LSPServer::isJapaneseLanguage(const DocumentState &document) {
+  return document.languageId == "japanese";
+}
+
 void LSPServer::onDidOpen(const json &params) {
   std::string uri = params["textDocument"]["uri"];
   std::string text = params["textDocument"]["text"];
-  docs_[uri] = text;
+  auto &document = ensureDocument(uri);
+  document.text = text;
+  document.tokens.clear();
+  document.tokensCached = false;
+  document.diagnosticsByLine.clear();
   if (params["textDocument"].contains("languageId") &&
       params["textDocument"]["languageId"].is_string()) {
-    docLanguages_[uri] = params["textDocument"]["languageId"];
+    document.languageId = params["textDocument"]["languageId"];
+  } else {
+    document.languageId.clear();
   }
-  analyzeAndPublish(uri, text);
+  analyzeAndPublish(uri);
 }
 
 void LSPServer::onDidChange(const json &params) {
   std::string uri = params["textDocument"]["uri"];
   auto changes = params["contentChanges"];
 
-  std::string &text = docs_[uri];
+  auto &document = ensureDocument(uri);
+  std::string &text = document.text;
   std::string oldText = text;
 
   // 位置を維持するため変更を逆順に適用
@@ -566,8 +306,8 @@ void LSPServer::onDidChange(const json &params) {
       int endLine = range["end"]["line"];
       int endChar = range["end"]["character"];
 
-      size_t startOffset = computeByteOffset(text, startLine, startChar);
-      size_t endOffset = computeByteOffset(text, endLine, endChar);
+      size_t startOffset = positionToByteOffset(text, startLine, startChar);
+      size_t endOffset = positionToByteOffset(text, endLine, endChar);
 
       std::string newText = change["text"];
       text.replace(startOffset, endOffset - startOffset, newText);
@@ -577,25 +317,28 @@ void LSPServer::onDidChange(const json &params) {
     }
   }
 
+  document.tokensCached = false;
+  document.tokens.clear();
+
   // 最適化: 変更された行のみ再解析
   analyzeChangedLines(uri, text, oldText);
 }
 
 void LSPServer::onDidSave(const json &params) {
   std::string uri = params["textDocument"]["uri"];
-  if (docs_.find(uri) != docs_.end()) {
-    analyzeAndPublish(uri, docs_[uri]);
+  if (findDocument(uri) != nullptr) {
+    analyzeAndPublish(uri);
   }
 }
 
 json LSPServer::onSemanticTokensFull(const json &id, const json &params) {
   std::string uri = params["textDocument"]["uri"];
-  if (docs_.find(uri) == docs_.end()) {
+  const auto *document = findDocument(uri);
+  if (!document) {
     return json{{"jsonrpc", "2.0"}, {"id", id}, {"result", nullptr}};
   }
 
-  auto langIt = docLanguages_.find(uri);
-  if (langIt == docLanguages_.end() || langIt->second != "japanese") {
+  if (!isJapaneseLanguage(*document)) {
     return json{{"jsonrpc", "2.0"}, {"id", id}, {"result", nullptr}};
   }
 
@@ -605,12 +348,12 @@ json LSPServer::onSemanticTokensFull(const json &id, const json &params) {
 
 json LSPServer::onSemanticTokensRange(const json &id, const json &params) {
   std::string uri = params["textDocument"]["uri"];
-  if (docs_.find(uri) == docs_.end()) {
+  const auto *document = findDocument(uri);
+  if (!document) {
     return json{{"jsonrpc", "2.0"}, {"id", id}, {"result", nullptr}};
   }
 
-  auto langIt = docLanguages_.find(uri);
-  if (langIt == docLanguages_.end() || langIt->second != "japanese") {
+  if (!isJapaneseLanguage(*document)) {
     return json{{"jsonrpc", "2.0"}, {"id", id}, {"result", nullptr}};
   }
 
@@ -618,70 +361,36 @@ json LSPServer::onSemanticTokensRange(const json &id, const json &params) {
   return json{{"jsonrpc", "2.0"}, {"id", id}, {"result", {{"data", tokens}}}};
 }
 
-bool isNoun(const std::string &tokenType, const std::string &feature) {
-  // tokenTypeが "noun" の場合
-  if (tokenType == "noun") {
-    return true;
-  }
-
-  // MeCabのfeature文字列から品詞を判定
-  // feature形式:
-  // "品詞,品詞細分類1,品詞細分類2,品詞細分類3,活用型,活用形,原形,読み,発音"
-  if (!feature.empty()) {
-    size_t commaPos = feature.find(',');
-    if (commaPos != std::string::npos) {
-      std::string mainPOS = feature.substr(0, commaPos);
-      return mainPOS == "名詞";
-    }
-  }
-
-  return false;
-}
-
 json LSPServer::onHover(const json &id, const json &params) {
   std::string uri = params["textDocument"]["uri"];
-  if (docs_.find(uri) == docs_.end() ||
-      docTokens_.find(uri) == docTokens_.end()) {
+  const auto *document = findDocument(uri);
+  if (!document || !document->tokensCached) {
     return json{{"jsonrpc", "2.0"}, {"id", id}, {"result", nullptr}};
   }
 
   int line = params["position"]["line"];
   int character = params["position"]["character"];
 
-  const auto docIt = docs_.find(uri);
-  if (docIt == docs_.end()) {
-    return json{{"jsonrpc", "2.0"}, {"id", id}, {"result", nullptr}};
-  }
-
   // japanese 以外の言語では、コメント/コンテンツ範囲内でのみ hover を表示
   // (HTML: タグ内テキスト、LaTeX: タグ・数式以外のテキスト、その他: コメント内)
-  auto langIt = docLanguages_.find(uri);
-  bool isJapanese =
-      (langIt != docLanguages_.end() && langIt->second == "japanese");
+  bool isJapanese = isJapaneseLanguage(*document);
 
   if (!isJapanese) {
-    size_t offset = computeByteOffset(docIt->second, line, character);
+    size_t offset = positionToByteOffset(document->text, line, character);
     bool insideComment = false;
-    const auto segmentsIt = docCommentSegments_.find(uri);
-    if (segmentsIt != docCommentSegments_.end()) {
-      for (const auto &segment : segmentsIt->second) {
-        if (offset >= segment.startByte && offset < segment.endByte) {
-          insideComment = true;
-          break;
-        }
+    for (const auto &segment : document->commentSegments) {
+      if (offset >= segment.startByte && offset < segment.endByte) {
+        insideComment = true;
+        break;
       }
     }
 
     bool insideContent = false;
-    if (langIt != docLanguages_.end() &&
-        (langIt->second == "html" || langIt->second == "latex")) {
-      const auto contentIt = docContentHighlightRanges_.find(uri);
-      if (contentIt != docContentHighlightRanges_.end()) {
-        for (const auto &range : contentIt->second) {
-          if (offset >= range.startByte && offset < range.endByte) {
-            insideContent = true;
-            break;
-          }
+    if (document->languageId == "html" || document->languageId == "latex") {
+      for (const auto &range : document->contentHighlightRanges) {
+        if (offset >= range.startByte && offset < range.endByte) {
+          insideContent = true;
+          break;
         }
       }
     }
@@ -692,7 +401,7 @@ json LSPServer::onHover(const json &id, const json &params) {
   }
 
   // 位置にあるトークンを検索
-  const auto &tokens = docTokens_[uri];
+  const auto &tokens = document->tokens;
   for (const auto &token : tokens) {
     if (token.line == line && character >= token.startChar &&
         character < token.endChar) {
@@ -712,7 +421,8 @@ json LSPServer::onHover(const json &id, const json &params) {
       }
 
       // 名詞の場合、Wikipediaサマリを追加
-      if (isNoun(token.tokenType, token.feature)) {
+      if (token.tokenType == "noun" ||
+          MoZuku::pos::POSAnalyzer::isNounFeature(token.feature)) {
         std::string query =
             token.baseForm.empty() ? token.surface : token.baseForm;
 
@@ -730,7 +440,7 @@ json LSPServer::onHover(const json &id, const json &params) {
                             cached_entry->response_code);
           }
         } else {
-          if (isDebugEnabled()) {
+          if (MoZuku::debug::isEnabled()) {
             std::cerr << "[DEBUG] fetching Wikipedia: " << query << std::endl;
           }
 
@@ -739,13 +449,13 @@ json LSPServer::onHover(const json &id, const json &params) {
           std::thread([query, future = std::move(future)]() mutable {
             try {
               auto result = future.get();
-              if (isDebugEnabled()) {
+              if (MoZuku::debug::isEnabled()) {
                 std::cerr << "[DEBUG] Wikipedia取得完了: " << query
                           << ", ステータス: " << result.response_code
                           << std::endl;
               }
             } catch (const std::exception &e) {
-              if (isDebugEnabled()) {
+              if (MoZuku::debug::isEnabled()) {
                 std::cerr << "[DEBUG] Wikipedia取得失敗: " << query
                           << ", エラー: " << e.what() << std::endl;
               }
@@ -754,71 +464,61 @@ json LSPServer::onHover(const json &id, const json &params) {
         }
       }
 
-      return json{
-          {"jsonrpc", "2.0"},
-          {"id", id},
-          {"result",
-           {{"contents", {{"kind", "markdown"}, {"value", markdown.str()}}},
-            {"range",
-             {{"start", {{"line", token.line}, {"character", token.startChar}}},
-              {"end",
-               {{"line", token.line}, {"character", token.endChar}}}}}}}};
+      return json{{"jsonrpc", "2.0"},
+                  {"id", id},
+                  {"result", presenter_.hoverResult(token, markdown.str())}};
     }
   }
 
   return json{{"jsonrpc", "2.0"}, {"id", id}, {"result", nullptr}};
 }
 
-void LSPServer::analyzeAndPublish(const std::string &uri,
-                                  const std::string &text) {
+void LSPServer::analyzeAndPublish(const std::string &uri) {
+  auto &document = ensureDocument(uri);
+  const std::string &text = document.text;
+
   if (!analyzer_->isInitialized()) {
     analyzer_->initialize(config_);
   }
 
-  std::string analysisText = prepareAnalysisText(uri, text);
+  auto prepared = prepareDocument(document);
 
-  std::vector<TokenData> tokens = analyzer_->analyzeText(analysisText);
-  std::vector<Diagnostic> diags = analyzer_->checkGrammar(analysisText);
+  std::vector<TokenData> tokens = analyzer_->analyzeText(prepared.analysisText);
+  std::vector<Diagnostic> diags =
+      analyzer_->checkGrammar(prepared.analysisText);
 
-  docTokens_[uri] = tokens;
-  cacheDiagnostics(uri, diags);
-
-  // 診断情報を配信
-  json diagnostics = json::array();
-  for (const auto &diag : diags) {
-    diagnostics.push_back({{"range",
-                            {{"start",
-                              {{"line", diag.range.start.line},
-                               {"character", diag.range.start.character}}},
-                             {"end",
-                              {{"line", diag.range.end.line},
-                               {"character", diag.range.end.character}}}}},
-                           {"severity", diag.severity},
-                           {"message", diag.message}});
-  }
+  document.tokens = tokens;
+  document.tokensCached = true;
+  cacheDiagnostics(document, diags);
 
   notify("textDocument/publishDiagnostics",
-         {{"uri", uri}, {"diagnostics", diagnostics}});
+         presenter_.publishDiagnosticsParams(uri, diags));
 
   // コンテンツ範囲を通知 (コメント範囲 or HTML/LaTeX のコンテンツ範囲)
   // HTML: タグ内テキスト、LaTeX: タグ・数式以外のテキスト
-  const auto segmentsIt = docCommentSegments_.find(uri);
-  if (segmentsIt != docCommentSegments_.end()) {
-    sendCommentHighlights(uri, text, segmentsIt->second);
+  static const std::vector<MoZuku::comments::CommentSegment> kEmptySegments;
+  if (!document.commentSegments.empty()) {
+    notify("mozuku/commentHighlights",
+           presenter_.commentHighlightsParams(uri, text,
+                                              document.commentSegments));
   } else {
-    static const std::vector<MoZuku::comments::CommentSegment> kEmptySegments;
-    sendCommentHighlights(uri, text, kEmptySegments);
+    notify("mozuku/commentHighlights",
+           presenter_.commentHighlightsParams(uri, text, kEmptySegments));
   }
 
-  const auto contentIt = docContentHighlightRanges_.find(uri);
-  if (contentIt != docContentHighlightRanges_.end()) {
-    sendContentHighlights(uri, text, contentIt->second);
+  static const std::vector<ByteRange> kEmptyContent;
+  if (!document.contentHighlightRanges.empty()) {
+    notify("mozuku/contentHighlights",
+           presenter_.contentHighlightsParams(uri, text,
+                                              document.contentHighlightRanges));
   } else {
-    static const std::vector<ByteRange> kEmptyContent;
-    sendContentHighlights(uri, text, kEmptyContent);
+    notify("mozuku/contentHighlights",
+           presenter_.contentHighlightsParams(uri, text, kEmptyContent));
   }
 
-  sendSemanticHighlights(uri, tokens);
+  bool isJapanese = isJapaneseLanguage(document);
+  notify("mozuku/semanticHighlights",
+         presenter_.semanticHighlightsParams(uri, isJapanese, tokens));
 }
 
 void LSPServer::analyzeChangedLines(const std::string &uri,
@@ -828,319 +528,67 @@ void LSPServer::analyzeChangedLines(const std::string &uri,
   std::set<int> changedLines = findChangedLines(oldText, newText);
 
   // 変更行の診断情報を削除
-  removeDiagnosticsForLines(uri, changedLines);
+  if (auto *document = findDocument(uri)) {
+    removeDiagnosticsForLines(*document, changedLines);
+  }
 
   // 現在は文書全体を再解析
   // TODO: パフォーマンス向上のため行単位の解析を実装
-  analyzeAndPublish(uri, newText);
+  analyzeAndPublish(uri);
 }
 
-std::string LSPServer::prepareAnalysisText(const std::string &uri,
-                                           const std::string &text) {
-  auto langIt = docLanguages_.find(uri);
-  if (langIt == docLanguages_.end()) {
-    docCommentSegments_.erase(uri);
-    docContentHighlightRanges_.erase(uri);
-    return text;
+MoZuku::analysis::ProcessedDocument
+LSPServer::prepareDocument(DocumentState &document) {
+  if (document.languageId.empty()) {
+    document.commentSegments.clear();
+    document.contentHighlightRanges.clear();
+    return {document.text, {}, {}};
   }
 
-  const std::string &languageId = langIt->second;
-  if (languageId == "japanese") {
-    docCommentSegments_.erase(uri);
-    docContentHighlightRanges_.erase(uri);
-    return text;
-  }
+  auto prepared = preprocessor_.prepare(document.languageId, document.text);
+  document.commentSegments = prepared.commentSegments;
+  document.contentHighlightRanges = prepared.contentHighlightRanges;
 
-  // HTML: ドキュメント本文をハイライト (<div>text</div> の text 部分)
-  if (languageId == "html") {
-    std::vector<MoZuku::comments::CommentSegment> commentSegments =
-        MoZuku::comments::extractComments(languageId, text);
-    docCommentSegments_[uri] = commentSegments;
-
-    std::vector<LocalByteRange> contentRanges = collectHtmlContentRanges(text);
-    std::vector<ByteRange> contentByteRanges;
-    contentByteRanges.reserve(contentRanges.size());
-    for (const auto &range : contentRanges) {
-      contentByteRanges.push_back(ByteRange{range.startByte, range.endByte});
-    }
-    // コメントも本文ハイライト対象に含める (クライアント側で装飾しやすくする)
-    for (const auto &segment : commentSegments) {
-      contentByteRanges.push_back(
-          ByteRange{segment.startByte, segment.endByte});
-    }
-    docContentHighlightRanges_[uri] = std::move(contentByteRanges);
-
-    // 全体をマスクしてコンテンツ部分のみ復元
-    std::string masked = text;
-    for (char &ch : masked) {
-      if (ch != '\n' && ch != '\r') {
-        ch = ' ';
-      }
-    }
-
-    for (const auto &range : contentRanges) {
-      if (range.startByte >= masked.size())
-        continue;
-      size_t len = std::min(range.endByte - range.startByte,
-                            masked.size() - range.startByte);
-      for (size_t i = 0; i < len; ++i) {
-        masked[range.startByte + i] = text[range.startByte + i];
-      }
-    }
-
-    for (const auto &segment : commentSegments) {
-      if (segment.startByte >= masked.size())
-        continue;
-      size_t len =
-          std::min(segment.sanitized.size(), masked.size() - segment.startByte);
-      for (size_t i = 0; i < len; ++i) {
-        masked[segment.startByte + i] = segment.sanitized[i];
-      }
-    }
-
-    return masked;
-  }
-
-  // LaTeX: ドキュメント本文をハイライト (タグ・数式を除くテキスト部分)
-  if (languageId == "latex") {
-    std::vector<MoZuku::comments::CommentSegment> commentSegments =
-        collectLatexComments(text);
-    docCommentSegments_[uri] = commentSegments;
-
-    std::vector<LocalByteRange> contentRanges = collectLatexContentRanges(text);
-    std::vector<ByteRange> contentByteRanges;
-    contentByteRanges.reserve(contentRanges.size());
-    for (const auto &range : contentRanges) {
-      contentByteRanges.push_back(ByteRange{range.startByte, range.endByte});
-    }
-    for (const auto &segment : commentSegments) {
-      contentByteRanges.push_back(
-          ByteRange{segment.startByte, segment.endByte});
-    }
-    docContentHighlightRanges_[uri] = std::move(contentByteRanges);
-
-    // 全体をマスクしてコンテンツ部分のみ復元
-    std::string masked = text;
-    for (char &ch : masked) {
-      if (ch != '\n' && ch != '\r') {
-        ch = ' ';
-      }
-    }
-
-    for (const auto &range : contentRanges) {
-      if (range.startByte >= masked.size())
-        continue;
-      size_t len = std::min(range.endByte - range.startByte,
-                            masked.size() - range.startByte);
-      for (size_t i = 0; i < len; ++i) {
-        masked[range.startByte + i] = text[range.startByte + i];
-      }
-    }
-
-    for (const auto &segment : commentSegments) {
-      if (segment.startByte >= masked.size())
-        continue;
-      size_t len =
-          std::min(segment.sanitized.size(), masked.size() - segment.startByte);
-      for (size_t i = 0; i < len; ++i) {
-        masked[segment.startByte + i] = segment.sanitized[i];
-      }
-    }
-
-    return masked;
-  }
-
-  if (!MoZuku::comments::isLanguageSupported(languageId)) {
-    docCommentSegments_.erase(uri);
-    docContentHighlightRanges_.erase(uri);
-    return text;
-  }
-
-  // その他の言語: コメント部分をハイライト
-  std::vector<MoZuku::comments::CommentSegment> segments =
-      MoZuku::comments::extractComments(languageId, text);
-  docCommentSegments_[uri] = segments;
-  docContentHighlightRanges_.erase(uri);
-
-  std::string masked = text;
-  for (char &ch : masked) {
-    if (ch != '\n' && ch != '\r') {
-      ch = ' ';
-    }
-  }
-
-  if (segments.empty()) {
-    return masked;
-  }
-
-  const size_t docSize = masked.size();
-  for (const auto &segment : segments) {
-    if (segment.startByte >= docSize) {
-      continue;
-    }
-    const std::string &sanitized = segment.sanitized;
-    size_t maxCopy = std::min(docSize - segment.startByte, sanitized.size());
-    for (size_t i = 0; i < maxCopy; ++i) {
-      masked[segment.startByte + i] = sanitized[i];
-    }
-  }
-
-  return masked;
-}
-
-void LSPServer::sendCommentHighlights(
-    const std::string &uri, const std::string &text,
-    const std::vector<MoZuku::comments::CommentSegment> &segments) {
-  json ranges = json::array();
-
-  std::vector<size_t> lineStarts = computeLineStarts(text);
-  for (const auto &segment : segments) {
-    Position start = byteOffsetToPosition(text, lineStarts, segment.startByte);
-    Position end = byteOffsetToPosition(text, lineStarts, segment.endByte);
-
-    json range = {
-        {"start", {{"line", start.line}, {"character", start.character}}},
-        {"end", {{"line", end.line}, {"character", end.character}}}};
-    ranges.push_back(std::move(range));
-  }
-
-  notify("mozuku/commentHighlights", {{"uri", uri}, {"ranges", ranges}});
-}
-
-void LSPServer::sendContentHighlights(const std::string &uri,
-                                      const std::string &text,
-                                      const std::vector<ByteRange> &ranges) {
-  json lspRanges = json::array();
-
-  std::vector<size_t> lineStarts = computeLineStarts(text);
-  for (const auto &range : ranges) {
-    Position start = byteOffsetToPosition(text, lineStarts, range.startByte);
-    Position end = byteOffsetToPosition(text, lineStarts, range.endByte);
-
-    lspRanges.push_back(
-        {{"start", {{"line", start.line}, {"character", start.character}}},
-         {"end", {{"line", end.line}, {"character", end.character}}}});
-  }
-
-  notify("mozuku/contentHighlights", {{"uri", uri}, {"ranges", lspRanges}});
-}
-
-void LSPServer::sendSemanticHighlights(const std::string &uri,
-                                       const std::vector<TokenData> &tokens) {
-  auto langIt = docLanguages_.find(uri);
-  bool isJapanese =
-      (langIt != docLanguages_.end() && langIt->second == "japanese");
-
-  // japanese の場合のみセマンティックハイライトを無効化
-  // (.ja.txt, .ja.md は LSP 側のセマンティックトークンを使用)
-  // HTML/LaTeX など他の言語は VS Code 拡張側の上塗りハイライトを使用
-  if (isJapanese) {
-    notify("mozuku/semanticHighlights",
-           {{"uri", uri}, {"tokens", json::array()}});
-    return;
-  }
-
-  json tokenEntries = json::array();
-  for (const auto &token : tokens) {
-    tokenEntries.push_back(
-        {{"range",
-          {{"start", {{"line", token.line}, {"character", token.startChar}}},
-           {"end", {{"line", token.line}, {"character", token.endChar}}}}},
-         {"type", token.tokenType},
-         {"modifiers", token.tokenModifiers}});
-  }
-
-  notify("mozuku/semanticHighlights", {{"uri", uri}, {"tokens", tokenEntries}});
+  return prepared;
 }
 
 json LSPServer::buildSemanticTokens(const std::string &uri) {
-  auto docIt = docs_.find(uri);
-  if (docIt == docs_.end()) {
+  auto *document = findDocument(uri);
+  if (!document) {
     return json::array();
   }
 
-  auto cached = docTokens_.find(uri);
-  if (cached != docTokens_.end()) {
-    return buildSemanticTokensFromTokens(cached->second);
+  if (document->tokensCached) {
+    return presenter_.semanticTokensData(document->tokens, tokenTypes_);
   }
 
   if (!analyzer_->isInitialized()) {
     analyzer_->initialize(config_);
   }
 
-  std::string analysisText = prepareAnalysisText(uri, docIt->second);
-  std::vector<TokenData> tokens = analyzer_->analyzeText(analysisText);
-  docTokens_[uri] = tokens;
+  auto prepared = prepareDocument(*document);
+  std::vector<TokenData> tokens = analyzer_->analyzeText(prepared.analysisText);
+  document->tokens = tokens;
+  document->tokensCached = true;
 
-  return buildSemanticTokensFromTokens(tokens);
+  return presenter_.semanticTokensData(document->tokens, tokenTypes_);
 }
 
-json LSPServer::buildSemanticTokensFromTokens(
-    const std::vector<TokenData> &tokens) {
-  json data = json::array();
-
-  int prevLine = 0, prevChar = 0;
-
-  for (const auto &token : tokens) {
-    int deltaLine = token.line - prevLine;
-    int deltaChar =
-        (deltaLine == 0) ? token.startChar - prevChar : token.startChar;
-
-    auto typeIt =
-        std::find(tokenTypes_.begin(), tokenTypes_.end(), token.tokenType);
-    int typeIndex =
-        (typeIt != tokenTypes_.end())
-            ? static_cast<int>(std::distance(tokenTypes_.begin(), typeIt))
-            : 0;
-
-    data.push_back(deltaLine);
-    data.push_back(deltaChar);
-    data.push_back(token.endChar - token.startChar);
-    data.push_back(typeIndex);
-    data.push_back(token.tokenModifiers);
-
-    prevLine = token.line;
-    prevChar = token.startChar;
-  }
-
-  return data;
-}
-
-void LSPServer::cacheDiagnostics(const std::string &uri,
+void LSPServer::cacheDiagnostics(DocumentState &document,
                                  const std::vector<Diagnostic> &diags) {
-  docDiagnostics_[uri].clear();
+  document.diagnosticsByLine.clear();
 
   for (const auto &diag : diags) {
     int line = diag.range.start.line;
-    docDiagnostics_[uri][line].push_back(diag);
+    document.diagnosticsByLine[line].push_back(diag);
   }
 }
 
-void LSPServer::removeDiagnosticsForLines(const std::string &uri,
+void LSPServer::removeDiagnosticsForLines(DocumentState &document,
                                           const std::set<int> &lines) {
-  if (docDiagnostics_.find(uri) == docDiagnostics_.end())
-    return;
-
-  auto &uriDiags = docDiagnostics_[uri];
   for (int line : lines) {
-    uriDiags.erase(line);
+    document.diagnosticsByLine.erase(line);
   }
-}
-
-std::vector<Diagnostic>
-LSPServer::getAllDiagnostics(const std::string &uri) const {
-  std::vector<Diagnostic> allDiags;
-
-  auto uriIt = docDiagnostics_.find(uri);
-  if (uriIt != docDiagnostics_.end()) {
-    for (const auto &linePair : uriIt->second) {
-      for (const auto &diag : linePair.second) {
-        allDiags.push_back(diag);
-      }
-    }
-  }
-
-  return allDiags;
 }
 
 std::set<int> LSPServer::findChangedLines(const std::string &oldText,
