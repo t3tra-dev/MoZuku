@@ -66,12 +66,8 @@ Presenter::contentHighlightsParams(const std::string &uri,
 }
 
 Presenter::json Presenter::semanticHighlightsParams(
-    const std::string &uri, bool isJapanese,
+    const std::string &uri, bool /*isJapanese*/,
     const std::vector<TokenData> &tokens) const {
-  if (isJapanese) {
-    return {{"uri", uri}, {"tokens", json::array()}};
-  }
-
   json tokenEntries = json::array();
   for (const auto &token : tokens) {
     tokenEntries.push_back({{"range", makeTokenRangeJson(token)},

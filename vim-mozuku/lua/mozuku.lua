@@ -179,6 +179,10 @@ function M.start(bufnr, config)
     root_dir = root,
     init_options = config.init_options or {},
     get_language_id = language_id_for,
+    on_init = function(client)
+      -- Disable built-in semantic tokens; mozuku uses custom notifications instead
+      client.server_capabilities.semanticTokensProvider = nil
+    end,
     on_attach = function(_, b)
       vim.b[b].mozuku_attached = true
     end,
