@@ -29,6 +29,12 @@ local function language_id_for(bufnr, filetype)
   if filetype == 'tex' or filetype == 'plaintex' then
     return 'latex'
   end
+  if filetype == 'text' or filetype == 'markdown' then
+    local name = vim.api.nvim_buf_get_name(bufnr)
+    if name:match('%.ja%.[^.]+$') then
+      return 'japanese'
+    end
+  end
   return filetype
 end
 
