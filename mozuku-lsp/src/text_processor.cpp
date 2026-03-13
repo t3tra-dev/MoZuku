@@ -3,6 +3,8 @@
 #include "mozuku/core/debug.hpp"
 #include <algorithm>
 #include <iostream>
+#include <vector>
+#include <cstdint>
 
 namespace MoZuku {
 namespace text {

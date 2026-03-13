@@ -3,6 +3,7 @@
 #include "mozuku/core/types.hpp"
 #include <string>
 #include <vector>
+#include <cstdint>
 
 namespace MoZuku {
 namespace text {
