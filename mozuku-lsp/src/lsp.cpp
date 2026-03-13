@@ -3,6 +3,7 @@
 #include "comment_extractor.hpp"
 #include "mozuku/core/debug.hpp"
 #include "pos_analyzer.hpp"
+#include "text_processor.hpp"
 #include "utf16.hpp"
 #include "wikipedia.hpp"
 
@@ -109,6 +110,8 @@ void LSPServer::handle(const json &req) {
                                     req.value("params", json::object())));
       } else if (method == "textDocument/hover") {
         reply(onHover(req["id"], req.value("params", json::object())));
+      } else if (method == "textDocument/selectionRange") {
+        reply(onSelectionRange(req["id"], req.value("params", json::object())));
       } else if (method == "shutdown") {
         reply(json{{"jsonrpc", "2.0"}, {"id", req["id"]}, {"result", nullptr}});
       } else if (method == "exit") {
@@ -244,7 +247,8 @@ json LSPServer::onInitialize(const json &id, const json &params) {
                       {"tokenModifiers", tokenModifiers_}}},
                     {"range", true},
                     {"full", true}}},
-                  {"hoverProvider", true}}}}}};
+                  {"hoverProvider", true},
+                  {"selectionRangeProvider", true}}}}}};
 }
 
 void LSPServer::onInitialized() {
@@ -471,6 +475,157 @@ json LSPServer::onHover(const json &id, const json &params) {
   }
 
   return json{{"jsonrpc", "2.0"}, {"id", id}, {"result", nullptr}};
+}
+
+json LSPServer::onSelectionRange(const json &id, const json &params) {
+  std::string uri = params["textDocument"]["uri"];
+  auto *document = findDocument(uri);
+  if (!document) {
+    return json{{"jsonrpc", "2.0"}, {"id", id}, {"result", json::array()}};
+  }
+
+  if (!params.contains("positions") || !params["positions"].is_array()) {
+    return json{{"jsonrpc", "2.0"}, {"id", id}, {"result", json::array()}};
+  }
+
+  // トークンキャッシュを確保
+  if (!document->tokensCached) {
+    if (!analyzer_->isInitialized()) {
+      analyzer_->initialize(config_);
+    }
+    auto prepared = prepareDocument(*document);
+    document->tokens = analyzer_->analyzeText(prepared.analysisText);
+    document->tokensCached = true;
+  }
+
+  const std::string &text = document->text;
+  TextOffsetMapper mapper(text);
+
+  // 句読点区切りの文境界を取得
+  auto sentences = MoZuku::text::TextProcessor::splitIntoSentences(text);
+
+  json result = json::array();
+
+  for (const auto &posJson : params["positions"]) {
+    int line = posJson["line"];
+    int character = posJson["character"];
+    size_t byteOffset = mapper.positionToByteOffset(line, character);
+
+    // === Level 3 (最外): 段落 (改行区切り) ===
+    size_t paraStart = 0;
+    for (size_t i = byteOffset; i > 0; --i) {
+      if (text[i - 1] == '\n') {
+        paraStart = i;
+        break;
+      }
+    }
+
+    size_t paraEnd = text.size();
+    for (size_t i = byteOffset; i < text.size(); ++i) {
+      if (text[i] == '\n') {
+        paraEnd = i;
+        break;
+      }
+    }
+
+    Position paraStartPos = mapper.byteOffsetToPosition(paraStart);
+    Position paraEndPos = mapper.byteOffsetToPosition(paraEnd);
+
+    // 最外の段落レンジから構築開始
+    json selRange = {
+        {"range",
+         {{"start",
+           {{"line", paraStartPos.line},
+            {"character", paraStartPos.character}}},
+          {"end",
+           {{"line", paraEndPos.line}, {"character", paraEndPos.character}}}}}};
+
+    // === Level 2: 行/文 (句読点区切り) ===
+    for (const auto &sentence : sentences) {
+      if (byteOffset >= sentence.start && byteOffset < sentence.end) {
+        // 末尾の改行・CRを除外した文末位置を算出
+        size_t sentEnd = sentence.end;
+        if (sentEnd > 0 && sentEnd <= text.size() &&
+            text[sentEnd - 1] == '\n') {
+          sentEnd--;
+        }
+        if (sentEnd > 0 && sentEnd <= text.size() &&
+            text[sentEnd - 1] == '\r') {
+          sentEnd--;
+        }
+
+        // 段落と異なる場合のみ文レベルを追加
+        if (sentence.start != paraStart || sentEnd != paraEnd) {
+          Position sentStartPos = mapper.byteOffsetToPosition(sentence.start);
+          Position sentEndPos = mapper.byteOffsetToPosition(sentEnd);
+
+          selRange = {{"range",
+                       {{"start",
+                         {{"line", sentStartPos.line},
+                          {"character", sentStartPos.character}}},
+                        {"end",
+                         {{"line", sentEndPos.line},
+                          {"character", sentEndPos.character}}}}},
+                      {"parent", selRange}};
+        }
+        break;
+      }
+    }
+
+    // === Level 1 (最内): 形態素 ===
+    // カーソルが形態素境界(終端)にある場合も直前トークンを選べるようにする
+    const TokenData *selectedToken = nullptr;
+    const TokenData *lineFirstToken = nullptr;
+    const TokenData *lineLastToken = nullptr;
+
+    for (const auto &token : document->tokens) {
+      if (token.line != line) {
+        continue;
+      }
+
+      if (!lineFirstToken || token.startChar < lineFirstToken->startChar) {
+        lineFirstToken = &token;
+      }
+      if (!lineLastToken || token.endChar > lineLastToken->endChar) {
+        lineLastToken = &token;
+      }
+
+      // 通常ケース: トークン内部
+      if (character >= token.startChar && character < token.endChar) {
+        selectedToken = &token;
+        break;
+      }
+
+      // 境界ケース: トークン終端ちょうど
+      if (!selectedToken && character == token.endChar) {
+        selectedToken = &token;
+      }
+    }
+
+    // 行頭/行末などで境界上にある場合のフォールバック
+    if (!selectedToken) {
+      if (lineFirstToken && character <= lineFirstToken->startChar) {
+        selectedToken = lineFirstToken;
+      } else if (lineLastToken && character >= lineLastToken->endChar) {
+        selectedToken = lineLastToken;
+      }
+    }
+
+    if (selectedToken) {
+      selRange = {{"range",
+                   {{"start",
+                     {{"line", selectedToken->line},
+                      {"character", selectedToken->startChar}}},
+                    {"end",
+                     {{"line", selectedToken->line},
+                      {"character", selectedToken->endChar}}}}},
+                  {"parent", selRange}};
+    }
+
+    result.push_back(selRange);
+  }
+
+  return json{{"jsonrpc", "2.0"}, {"id", id}, {"result", result}};
 }
 
 void LSPServer::analyzeAndPublish(const std::string &uri) {

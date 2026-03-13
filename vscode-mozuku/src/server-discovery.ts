@@ -118,18 +118,6 @@ export function resolveServerPath(
     addResolvedPath("環境変数 MOZUKU_LSP", envValue);
   }
 
-  addCommandSearch(
-    "設定済みコマンド",
-    configuredValue && !hasPathSep(configuredValue)
-      ? configuredValue
-      : undefined,
-  );
-  addCommandSearch(
-    "環境変数 MOZUKU_LSP",
-    envValue && !hasPathSep(envValue) ? envValue : undefined,
-  );
-  addCommandSearch("デフォルトコマンド", exeName);
-
   add(
     "パッケージ済み",
     vscode.Uri.joinPath(ctx.extensionUri, "bin", exeName).fsPath,
@@ -147,11 +135,11 @@ export function resolveServerPath(
   );
 
   if (workspaceRoot) {
+    // 開発ワークスペースでは nested `mozuku-lsp/build` が最新になりやすいので優先
     add(
-      "ワークスペース-install",
-      path.join(workspaceRoot, "build", "install", "bin", exeName),
+      "ワークスペース-build",
+      path.join(workspaceRoot, "mozuku-lsp", "build", exeName),
     );
-    add("ワークスペース-build", path.join(workspaceRoot, "build", exeName));
     add(
       "ワークスペース-install",
       path.join(
@@ -163,10 +151,12 @@ export function resolveServerPath(
         exeName,
       ),
     );
+
     add(
-      "ワークスペース-build",
-      path.join(workspaceRoot, "mozuku-lsp", "build", exeName),
+      "ワークスペース-install",
+      path.join(workspaceRoot, "build", "install", "bin", exeName),
     );
+    add("ワークスペース-build", path.join(workspaceRoot, "build", exeName));
   }
 
   add(
@@ -185,6 +175,20 @@ export function resolveServerPath(
     "開発-build",
     path.join(extensionRoot, "..", "mozuku-lsp", "build", exeName),
   );
+
+  // PATH 探索は最後: システムにインストール済みの古いバイナリより、
+  // ワークスペース/拡張同梱の開発中バイナリを優先する
+  addCommandSearch(
+    "設定済みコマンド",
+    configuredValue && !hasPathSep(configuredValue)
+      ? configuredValue
+      : undefined,
+  );
+  addCommandSearch(
+    "環境変数 MOZUKU_LSP",
+    envValue && !hasPathSep(envValue) ? envValue : undefined,
+  );
+  addCommandSearch("デフォルトコマンド", exeName);
 
   for (const candidate of candidates) {
     if (fs.existsSync(candidate.path)) {

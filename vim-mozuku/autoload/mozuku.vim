@@ -173,6 +173,14 @@ function! s:command_candidates(command_name) abort
   endif
 
   let l:exe = s:exe_name(a:command_name)
+  let l:repo_root = s:repo_root()
+
+  " 開発中バイナリを優先: ワークスペース出力 -> 拡張同梱 -> システムPATH
+  call s:add_unique(l:candidates, l:repo_root . '/mozuku-lsp/build/' . l:exe)
+  call s:add_unique(l:candidates, l:repo_root . '/mozuku-lsp/build/install/bin/' . l:exe)
+  call s:add_unique(l:candidates, l:repo_root . '/vscode-mozuku/bin/' . l:exe)
+  call s:add_unique(l:candidates, l:repo_root . '/build/' . l:exe)
+  call s:add_unique(l:candidates, l:repo_root . '/build/install/bin/' . l:exe)
 
   for l:name in [a:command_name, l:exe]
     let l:resolved = exepath(l:name)
@@ -206,12 +214,6 @@ function! s:command_candidates(command_name) abort
       endfor
     endfor
   endif
-
-  let l:repo_root = s:repo_root()
-  call s:add_unique(l:candidates, l:repo_root . '/build/install/bin/' . l:exe)
-  call s:add_unique(l:candidates, l:repo_root . '/build/' . l:exe)
-  call s:add_unique(l:candidates, l:repo_root . '/mozuku-lsp/build/install/bin/' . l:exe)
-  call s:add_unique(l:candidates, l:repo_root . '/mozuku-lsp/build/' . l:exe)
 
   return l:candidates
 endfunction
