@@ -1,54 +1,12 @@
 #include "comment_extractor.hpp"
+#include "mozuku/treesitter/document.hpp"
 
-#include <algorithm>
 #include <cctype>
-#include <memory>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
-#include <tree_sitter/api.h>
-
-extern "C" {
-const TSLanguage *tree_sitter_c();
-const TSLanguage *tree_sitter_cpp();
-const TSLanguage *tree_sitter_html();
-const TSLanguage *tree_sitter_javascript();
-const TSLanguage *tree_sitter_python();
-const TSLanguage *tree_sitter_rust();
-const TSLanguage *tree_sitter_typescript();
-const TSLanguage *tree_sitter_tsx();
-const TSLanguage *tree_sitter_latex();
-}
-
 namespace {
-
-using LanguageFactory = const TSLanguage *(*)();
-
-const std::unordered_map<std::string, LanguageFactory> &languageMap() {
-  static const std::unordered_map<std::string, LanguageFactory> map = {
-      {"c", tree_sitter_c},
-      {"cpp", tree_sitter_cpp},
-      {"html", tree_sitter_html},
-      {"c++", tree_sitter_cpp},
-      {"javascript", tree_sitter_javascript},
-      {"javascriptreact", tree_sitter_tsx},
-      {"typescript", tree_sitter_typescript},
-      {"typescriptreact", tree_sitter_tsx},
-      {"tsx", tree_sitter_tsx},
-      {"python", tree_sitter_python},
-      {"rust", tree_sitter_rust},
-      {"latex", tree_sitter_latex}};
-  return map;
-}
-
-std::string toLower(std::string input) {
-  std::transform(
-      input.begin(), input.end(), input.begin(),
-      [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-  return input;
-}
 
 inline bool isNewline(char c) { return c == '\n' || c == '\r'; }
 
@@ -216,64 +174,22 @@ namespace MoZuku {
 namespace comments {
 
 const TSLanguage *resolveLanguage(const std::string &languageId) {
-  const auto &map = languageMap();
-  auto it = map.find(toLower(languageId));
-  if (it == map.end()) {
-    return nullptr;
-  }
-  return it->second();
+  return treesitter::resolveLanguage(languageId);
 }
 
 bool isLanguageSupported(const std::string &languageId) {
-  const auto &map = languageMap();
-  return map.find(toLower(languageId)) != map.end();
+  return treesitter::isLanguageSupported(languageId);
 }
 
 std::vector<CommentSegment> extractComments(const std::string &languageId,
                                             const std::string &text) {
   std::vector<CommentSegment> segments;
-
-  const TSLanguage *language = resolveLanguage(languageId);
-  if (!language) {
+  treesitter::ParsedDocument document(languageId, text);
+  if (!document.isValid()) {
     return segments;
   }
 
-  TSParser *parser = ts_parser_new();
-  if (!parser) {
-    return segments;
-  }
-
-  std::unique_ptr<TSParser, decltype(&ts_parser_delete)> parserGuard(
-      parser, &ts_parser_delete);
-
-  if (!ts_parser_set_language(parser, language)) {
-    return segments;
-  }
-
-  TSTree *tree =
-      ts_parser_parse_string(parser, nullptr, text.c_str(), text.size());
-  if (!tree) {
-    return segments;
-  }
-
-  std::unique_ptr<TSTree, decltype(&ts_tree_delete)> treeGuard(tree,
-                                                               &ts_tree_delete);
-
-  TSNode root = ts_tree_root_node(tree);
-  if (ts_node_is_null(root)) {
-    return segments;
-  }
-  std::vector<TSNode> stack;
-  stack.push_back(root);
-
-  while (!stack.empty()) {
-    TSNode node = stack.back();
-    stack.pop_back();
-
-    if (ts_node_is_null(node)) {
-      continue;
-    }
-
+  treesitter::walkDepthFirst(document.root(), [&](TSNode node) {
     const char *type = ts_node_type(node);
     if (type) {
       std::string_view nodeType(type);
@@ -290,18 +206,11 @@ std::vector<CommentSegment> extractComments(const std::string &languageId,
           segment.sanitized = std::move(segmentText);
           segments.push_back(std::move(segment));
         }
-        continue;
+        return false;
       }
     }
-
-    uint32_t childCount = ts_node_child_count(node);
-    for (uint32_t i = 0; i < childCount; ++i) {
-      TSNode child = ts_node_child(node, i);
-      if (!ts_node_is_null(child)) {
-        stack.push_back(child);
-      }
-    }
-  }
+    return true;
+  });
 
   return segments;
 }

@@ -9,9 +9,8 @@ std::string POSAnalyzer::mapPosToType(const char *feature) {
   if (!feature)
     return "unknown";
 
-  std::string f = text::TextProcessor::sanitizeUTF8(std::string(feature));
-  auto p = f.find(',');
-  std::string pos = (p == std::string::npos) ? f : f.substr(0, p);
+  std::vector<std::string> fields = parseFeatureFields(std::string(feature));
+  std::string pos = fields.empty() ? "" : fields.front();
 
   if (pos.find("名詞") != std::string::npos)
     return "noun";
@@ -37,6 +36,38 @@ std::string POSAnalyzer::mapPosToType(const char *feature) {
     return "suffix";
 
   return "unknown";
+}
+
+bool POSAnalyzer::isNounFeature(const std::string &feature) {
+  std::vector<std::string> fields = parseFeatureFields(feature);
+  return !fields.empty() && fields[0] == "名詞";
+}
+
+bool POSAnalyzer::isParticleFeature(const std::string &feature) {
+  std::vector<std::string> fields = parseFeatureFields(feature);
+  return !fields.empty() && fields[0] == "助詞";
+}
+
+bool POSAnalyzer::isConjunctionFeature(const std::string &feature) {
+  std::vector<std::string> fields = parseFeatureFields(feature);
+  return !fields.empty() && fields[0] == "接続詞";
+}
+
+bool POSAnalyzer::isAdversativeGaFeature(const std::string &feature) {
+  std::vector<std::string> fields = parseFeatureFields(feature);
+  return fields.size() > 6 && fields[0] == "助詞" && fields[1] == "接続助詞" &&
+         fields[6] == "が";
+}
+
+std::string POSAnalyzer::particleKey(const std::string &feature) {
+  std::vector<std::string> fields = parseFeatureFields(feature);
+  if (fields.empty()) {
+    return "";
+  }
+  if (fields.size() == 1) {
+    return fields[0];
+  }
+  return fields[0] + "," + fields[1];
 }
 
 void POSAnalyzer::parseFeatureDetails(const char *feature,
@@ -75,12 +106,12 @@ DetailedPOS POSAnalyzer::parseDetailedPOS(const char *feature,
   if (!feature)
     return pos;
 
-  std::string f =
+  std::string featureText =
       (systemCharset == "UTF-8")
-          ? std::string(feature)
+          ? text::TextProcessor::sanitizeUTF8(std::string(feature))
           : encoding::systemToUtf8(std::string(feature), systemCharset);
 
-  std::vector<std::string> fields = splitFeature(f);
+  std::vector<std::string> fields = splitFeature(featureText);
 
   // Fill in the detailed POS structure
   if (fields.size() > 0)
@@ -132,6 +163,11 @@ unsigned POSAnalyzer::computeModifiers(const std::string &text, size_t start,
   }
 
   return mods;
+}
+
+std::vector<std::string>
+POSAnalyzer::parseFeatureFields(const std::string &feature) {
+  return splitFeature(text::TextProcessor::sanitizeUTF8(feature));
 }
 
 std::vector<std::string> POSAnalyzer::splitFeature(const std::string &feature) {

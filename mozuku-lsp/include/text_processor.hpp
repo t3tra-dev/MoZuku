@@ -1,6 +1,6 @@
 #pragma once
 
-#include "analyzer.hpp"
+#include "mozuku/core/types.hpp"
 #include <string>
 #include <vector>
 
