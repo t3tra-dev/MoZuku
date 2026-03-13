@@ -12,16 +12,16 @@ require("lazy").setup({
       name = "vim-mozuku",
       branch = "main",
       submodules = false,
-      init = function(plugin)
+      config = function(plugin)
         vim.opt.rtp:prepend(plugin.dir .. "/vim-mozuku")
+        vim.cmd('runtime plugin/mozuku.vim')
       end,
       build = function(plugin)
         local dir = plugin.dir
         vim.fn.system({ "git", "-C", dir, "sparse-checkout", "init", "--cone" })
         vim.fn.system({ "git", "-C", dir, "sparse-checkout", "set", "vim-mozuku" })
       end,
-    },
-  },
+    }
 }, {
   git = {
     filter = true, -- partial clone (blobless)
