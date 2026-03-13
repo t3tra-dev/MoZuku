@@ -108,6 +108,21 @@ function! mozuku#ensure_highlights() abort
   highlight default MozukuComment gui=NONE cterm=NONE
   highlight default MozukuContent gui=NONE cterm=NONE
 
+  if has('nvim-0.9')
+    highlight default link @lsp.type.noun.mozuku MozukuNoun
+    highlight default link @lsp.type.verb.mozuku MozukuVerb
+    highlight default link @lsp.type.adjective.mozuku MozukuAdjective
+    highlight default link @lsp.type.adverb.mozuku MozukuAdverb
+    highlight default link @lsp.type.particle.mozuku MozukuParticle
+    highlight default link @lsp.type.aux.mozuku MozukuAux
+    highlight default link @lsp.type.conjunction.mozuku MozukuConjunction
+    highlight default link @lsp.type.symbol.mozuku MozukuSymbol
+    highlight default link @lsp.type.interj.mozuku MozukuInterj
+    highlight default link @lsp.type.prefix.mozuku MozukuPrefix
+    highlight default link @lsp.type.suffix.mozuku MozukuSuffix
+    highlight default link @lsp.type.unknown.mozuku MozukuUnknown
+  endif
+
   if exists('*prop_type_add')
     call s:ensure_prop_types()
   endif
