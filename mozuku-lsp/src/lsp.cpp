@@ -44,6 +44,7 @@ LSPServer::LSPServer(std::istream &in, std::ostream &out) : in_(in), out_(out) {
   tokenTypes_ = {"noun",     "verb",   "adjective",   "adverb",
                  "particle", "aux",    "conjunction", "symbol",
                  "interj",   "prefix", "suffix",      "unknown"};
+  // 順序は MoZukuModifiers のビット位置と整合させる
   tokenModifiers_ = {"proper", "numeric", "kana", "kanji"};
 
   // アナライザーを初期化

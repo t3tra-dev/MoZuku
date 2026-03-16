@@ -141,25 +141,23 @@ unsigned POSAnalyzer::computeModifiers(const std::string &text, size_t start,
   unsigned mods = 0;
   bool hasKana = false, hasKanji = false, hasNumber = false;
 
-  // Analyze character types in the token
+  // トークン内の文字の種類を分析する
   analyzeCharacterTypes(text, start, length, hasKana, hasKanji, hasNumber);
 
-  // Set modifiers based on character types
+  // LSPのレジェンド順にビット割り当てを維持:
+  // 固有名詞, 数値, かな, 漢字
   if (hasKana)
-    mods |= 0x01; // Contains kana
+    mods |= MoZukuModifiers::Kana;
   if (hasKanji)
-    mods |= 0x02; // Contains kanji
+    mods |= MoZukuModifiers::Kanji;
   if (hasNumber)
-    mods |= 0x04; // Contains numbers
+    mods |= MoZukuModifiers::Numeric;
 
-  // Add POS-based modifiers
+  // レジェンドに宣言されている修飾子のみを出力
   if (feature) {
     std::string f(feature);
     if (f.find("固有名詞") != std::string::npos)
-      mods |= 0x08; // Proper noun
-    if (f.find("動詞") != std::string::npos &&
-        f.find("自立") != std::string::npos)
-      mods |= 0x10; // Independent verb
+      mods |= MoZukuModifiers::Proper;
   }
 
   return mods;
