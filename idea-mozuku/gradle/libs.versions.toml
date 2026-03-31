@@ -1,0 +1,9 @@
+[versions]
+scala3 = "3.3.6"
+intelliJPlatform = "2.13.1"
+
+[libraries]
+scala3Library = { group = "org.scala-lang", name = "scala3-library_3", version.ref = "scala3" }
+
+[plugins]
+intelliJPlatform = { id = "org.jetbrains.intellij.platform", version.ref = "intelliJPlatform" }
