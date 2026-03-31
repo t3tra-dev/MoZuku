@@ -1,0 +1,20 @@
+<idea-plugin>
+    <id>dev.t3tra.mozuku.idea</id>
+    <name>MoZuku</name>
+    <vendor email="dev@t3tra.dev" url="https://github.com/t3tra-dev/MoZuku">t3tra</vendor>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.lsp</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationConfigurable
+                id="dev.t3tra.mozuku.idea.settings"
+                displayName="MoZuku"
+                parentId="tools"
+                instance="dev.t3tra.mozuku.idea.settings.MoZukuConfigurable"/>
+    </extensions>
+
+    <extensions defaultExtensionNs="com.intellij.platform.lsp">
+        <serverSupportProvider implementation="dev.t3tra.mozuku.idea.lsp.MoZukuLspServerSupportProvider"/>
+    </extensions>
+</idea-plugin>

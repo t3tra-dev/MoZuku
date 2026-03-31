@@ -6,6 +6,7 @@ vscode-mozuku/bin/
 vscode-mozuku/metadata.json
 dist/
 .cache/
+.metals/
 *.o
 *.so
 *.dylib
