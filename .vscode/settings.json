@@ -8,6 +8,7 @@
     "vscode-mozuku/out": true,
     "vscode-mozuku/dist": true
   },
-  "typescript.tsc.autoDetect": "off",
-  "cmake.sourceDirectory": "${workspaceFolder}/mozuku-lsp"
+  "js/ts.tsc.autoDetect": "off",
+  "cmake.sourceDirectory": "${workspaceFolder}/mozuku-lsp",
+  "java.configuration.updateBuildConfiguration": "interactive"
 }

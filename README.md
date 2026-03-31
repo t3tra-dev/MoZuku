@@ -1,4 +1,4 @@
-# MoZuku - A Japanese Language Server
+# MoZuku - Japanese Language Server
 
 MoZuku は、MeCab・CaboCha を活用した日本語文章の解析・校正を行う LSP サーバーです。
 
