@@ -10,5 +10,8 @@
   },
   "js/ts.tsc.autoDetect": "off",
   "cmake.sourceDirectory": "${workspaceFolder}/mozuku-lsp",
-  "java.configuration.updateBuildConfiguration": "interactive"
+  "java.configuration.updateBuildConfiguration": "interactive",
+  "files.watcherExclude": {
+    "**/target": true
+  }
 }
